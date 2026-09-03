@@ -1,0 +1,36 @@
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Data & Large Files
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.pth
+*.pt
+*.bin
+*.onnx
+*.tar.gz
+*.zip
+
+# Database
+*.db
+*.sqlite
+depth.db
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
