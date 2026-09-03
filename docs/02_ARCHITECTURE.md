@@ -1,97 +1,127 @@
-# 🏗️ System Architecture & Data Flow
-## Project DepthWizard — ISRO Problem Statement 26175
+# System Architecture
 
----
-
-## 1. High-Level Architecture (The LEGO Block Explanation)
-
-Think of DepthWizard like a 4-station assembly line:
-
+## Pipeline
 ```
-[Satellite Image] ──▶ [Station 1: AI Depth Engine] ──▶ [Station 2: Metric Calibrator]
-                                                                  │
-┌─────────────────────────────────────────────────────────────────┘
-▼
-[Station 3: Local SQLite & File Storage] ──▶ [Station 4: 3D WebGL Flythrough Studio]
+Satellite Image -> AI Depth Engine -> Metric Calibrator -> SQLite + File Storage -> 3D WebGL Viewport
 ```
+1. **Depth Engine:** Monocular depth model produces a raw relative height map
+   from the RGB image.
+2. **Metric Calibrator:** If the image is georeferenced, aligns relative depth
+   to a real elevation baseline (SRTM 30m / Copernicus GLO-30) via affine
+   scaling `Z_metric = s * d_rel + t`.
+3. **Storage:** Scene metadata, elevation stats, benchmark scores, and point
+   annotations are persisted in SQLite; raster/texture files live on disk.
+4. **3D Viewport:** Loads the height map and optical texture, displaces a
+   plane mesh on the GPU, and renders a flyable terrain at 60 FPS.
 
-1. **Station 1 (AI Depth Engine):** Takes the 2D photo and creates a raw height grayscale map (where bright pixels are tall and dark pixels are low).
-2. **Station 2 (Metric Calibrator):** Checks if the photo has GPS coordinates. If yes, it pulls coarse real-world elevation from satellite radar baselines (SRTM/Copernicus 30m) and converts pixel brightness into **real meters** ($s \cdot d_{rel} + t$).
-3. **Station 3 (Database & Storage):** Stores the metadata, elevation grids, point annotations, and benchmark logs cleanly on your computer.
-4. **Station 4 (3D Flythrough Studio):** Takes the height values and satellite photo, pushes them to your graphics chip (GPU) inside your web browser, bends a flat 3D grid into hills and skyscrapers, and lets you fly around it at 60 FPS.
-
----
-
-## 2. End-to-End System Block Diagram
-
+## Block Diagram
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             TIER 1: USER CLIENT                             │
-│                         (Web Browser - Chrome / Edge)                       │
-│                                                                             │
-│  ┌───────────────────────┐   ┌───────────────────────┐   ┌───────────────┐  │
-│  │   2D Control HUD      │   │  Three.js 3D Canvas   │   │  Chart.js 2D  │  │
-│  │ - Upload / Presets    │   │ - Terrain Mesh Shader │   │  Cross-Section│  │
-│  │ - Layer Toggles       │   │ - Texture Draping     │   │  Profile View │  │
-│  │ - Telemetry Readout   │   │ - Drone / Orbit Cam   │   │  Slice Tray   │  │
-│  └───────────┬───────────┘   └───────────▲───────────┘   └───────▲───────┘  │
-│              │                           │                       │          │
-└──────────────┼───────────────────────────┼───────────────────────┼──────────┘
-               │ REST HTTP (JSON)          │ Height / Texture PNGs │ Array    
-┌──────────────▼───────────────────────────┴───────────────────────┴──────────┐
-│                         TIER 2: LOCAL BACKEND SERVICE                       │
-│                          (FastAPI / Python 3.13)                            │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ API Routing Layer (main.py)                                           │  │
-│  │ - /api/scenes             - /api/upload          - /api/predict       │  │
-│  │ - /api/inspect-point      - /api/profile-slice   - /api/benchmarks    │  │
-│  └───────────────┬───────────────────────────────────────┬───────────────┘  │
-│                  │                                       │                  │
-│  ┌───────────────▼───────────────┐       ┌───────────────▼───────────────┐  │
-│  │    Geospatial Engine          │       │    Metric Calibration Core    │  │
-│  │ - Rasterio (GeoTIFF metadata) │       │ - Affine Scaler: s*d + t      │  │
-│  │ - H5py (HDF5 parsing)         │       │ - SRTM / Copernicus Alignment │  │
-│  │ - GDAL coordinate transforms  │       │ - Above Ground Level (h_AGL)  │  │
-│  └───────────────┬───────────────┘       └───────────────┬───────────────┘  │
-└──────────────────┼───────────────────────────────────────┼──────────────────┘
-                   │                                       │                  
-┌──────────────────▼───────────────────────────────────────▼──────────────────┐
-│                         TIER 3: DATA & STORAGE LAYER                        │
-│                                                                             │
-│  ┌───────────────────────────────┐       ┌───────────────────────────────┐  │
-│  │  SQLite Database (depth.db)   │       │  Local File System Store      │  │
-│  │ - scenes table                │       │  /data/optical/ (.png, .tif)  │  │
-│  │ - ground_truths table         │       │  /data/dsm/ (calibrated .tif) │  │
-│  │ - benchmark_results table     │       │  /data/cache/ (16-bit PNGs)   │  │
-│  │ - point_inspections table     │       │  /data/baselines/ (SRTM tiles)│  │
-│  └───────────────────────────────┘       └───────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────── TIER 1: Browser Client ─────────────────────────────┐
+│  HUD (upload/presets/toggles)   Three.js 3D canvas   Chart.js 2D cross-section    │
+└──────────────┬─────────────────────────┬─────────────────────────┬───────────────┘
+               │ REST (JSON)             │ Height/texture PNG      │ Profile array
+┌──────────────▼─────────────────────────┴─────────────────────────┴───────────────┐
+│                     TIER 2: FastAPI Backend (Python 3.13)                        │
+│  Routes: /api/scenes /api/upload /api/predict /api/inspect /api/transect         │
+│          /api/benchmarks /api/export                                             │
+│  ┌─────────────────────────────┐   ┌─────────────────────────────┐               │
+│  │ Geospatial engine           │   │ Metric calibration core      │               │
+│  │ rasterio, h5py, GDAL        │   │ affine scaler s*d + t,       │               │
+│  │ CRS/bbox/GSD parsing        │   │ SRTM/Copernicus alignment,   │               │
+│  │                             │   │ AGL computation              │               │
+│  └─────────────────────────────┘   └─────────────────────────────┘               │
+└──────────────┬─────────────────────────────────────────┬─────────────────────────┘
+               │                                          │
+┌──────────────▼──────────────────────────┐   ┌───────────▼────────────────────────┐
+│ SQLite (depth.db)                       │   │ File system (/data)                │
+│ scenes, ground_truths,                  │   │ optical/, dsm/, cache/,             │
+│ benchmark_metrics, point_inspections,    │   │ ground_truth/                      │
+│ transect_profiles                       │   │                                     │
+└──────────────────────────────────────────┘   └─────────────────────────────────────┘
 ```
 
----
+## Design Notes
+- **GPU vertex displacement:** The height map is loaded as a texture and the
+  GPU displaces mesh vertices in the vertex shader — avoids building the mesh
+  on the CPU.
+- **Texture draping:** The optical RGB image is applied as the color map in
+  the fragment shader over the displaced geometry.
+- **Contract-first:** Frontend and backend communicate only through the JSON
+  contracts in `05_TRD_AND_API_SPECS.md`, so frontend work can proceed against
+  mock data independent of backend/model progress.
+- **Preset caching:** The 4 benchmark scenes ship with precomputed textures,
+  DSMs, and ground-truth metrics so they load instantly (no on-demand inference).
+- **Stateless scenes:** Each uploaded scene gets a UUID `scene_id`; all its
+  assets are stored under `/data/{scene_id}/` with no server session state.
+- **Training vs. inference split:** Model training/inference for generating
+  the benchmark DSMs happens offline (e.g. Colab with a T4 GPU running
+  Depth-Anything-V2); the shipped app only serves precomputed or
+  ONNX/CPU-inferred results, keeping the runtime demo lightweight.
 
-## 3. Tier-by-Tier Breakdown
+## Module Responsibilities
+| Module | Owns | Key detail |
+|---|---|---|
+| `backend/core/processor.py` | Ingestion + pipeline orchestration | Detects georeferencing, routes to metric or relative path |
+| `backend/services/calibrator.py` | Affine fit `Z = s·d + t` | Least squares / RANSAC against coarse DEM |
+| `backend/services/agl.py` | Bare-earth estimate, `h_AGL` | Morphological min-filter + smoothing |
+| `backend/services/exporter.py` | GeoTIFF writer | float32, CRS + transform from bounds |
+| `backend/db/queries.py` | SQLite access layer | Only module issuing SQL |
+| `backend/eval/metrics.py` | RMSE / MAE / Pearson r / bias | Stratified by landscape type |
+| `backend/api/routes.py` | HTTP surface | Validation + serialization only, no math |
+| `frontend/src/3d/` | Terrain, camera, picking | GPU displacement, raycast → pixel |
+| `frontend/src/hud/`, `chart/` | Controls, inspector, transect | Consumes API contracts only |
 
-### Tier 1: Frontend Client (Vite + Three.js)
-- **Why It's Fast:** It uses **GPU Vertex Displacement**. Instead of the CPU building thousands of 3D triangles, the frontend loads the height map as a black-and-white picture (height texture). The graphics card (Intel UHD) moves the vertices up and down in parallel in nanoseconds.
-- **Dynamic Texture Draping:** The satellite color photo is passed to the fragment shader and draped over the bumps, so trees, roofs, and asphalt stick to their correct 3D elevations.
+Implementation detail lives in `06_ELEVATION_PIPELINE.md` (backend/ML) and
+`07_FRONTEND_IMPLEMENTATION.md` (client).
 
-### Tier 2: Backend Service (FastAPI)
-- **Why FastAPI:** It is fast, native to Python 3.13, automatically generates interactive Swagger API docs (`/docs`), and easily interfaces with scientific packages (`numpy`, `rasterio`, `scipy`).
-- **Separation of Concerns:** 
-  - Hasini implements the FastAPI routes and validation error formulas (`services/benchmarks.py`).
-  - Dheer implements the SQLite database queries and model pipeline integration.
-  - You (Lead) implement the mathematical affine calibration inside `services/calibrator.py`.
+## Request Sequences
 
-### Tier 3: Cloud ML vs Local Inference
-- **In the Cloud (Google Colab T4 GPU):** Dheer runs the heavy PyTorch `Depth-Anything-V2` foundation model on satellite patches (`earthflow/GAMUS` and `DC_03_26_RGB.h5`), verifies convergence, and exports lightweight ONNX models or precomputed GeoTIFF rasters for the 4 demo scenes.
-- **On the Local Laptop:** The local app runs in fast demonstration mode: it serves pre-computed calibrated models instantly or processes user uploads with an ONNX/CPU runner, guaranteeing 0 second lag in front of the judges.
+### Load a preset scene
+```
+Client                     API                    DB / Disk
+  │  GET /api/scenes         │                        │
+  │─────────────────────────▶│  SELECT * FROM scenes  │
+  │                          │───────────────────────▶│
+  │◀── scene list ───────────│                        │
+  │  GET /api/scenes/{id}    │                        │
+  │─────────────────────────▶│  scene row + asset paths
+  │◀── metadata + asset URLs │                        │
+  │  GET /static/optical.png, /static/disp_16bit.png  │
+  │──────────────────────────────────────────────────▶│
+  │  build mesh, drape texture, render                │
+```
+No inference runs on this path — assets are precomputed, which is what keeps
+scene load under the 2s budget.
 
----
+### Upload → predict
+```
+POST /api/upload      -> store file, parse CRS/bounds/GSD, insert scenes row
+                         returns scene_id, is_georeferenced
+POST /api/predict/{id}-> depth inference (ONNX/CPU or precomputed)
+                         -> normalize + invert -> d_rel
+                         -> if georeferenced: affine calibrate vs. DEM -> Z_metric
+                            else: relative mode, no meters reported
+                         -> compute h_AGL, write 16-bit PNG + GeoTIFF
+                         -> update scenes row with paths + elevation stats
+```
 
-## 4. Key Architectural Patterns (Preventing Team Chaos)
+### Point inspection
+```
+Client raycast -> UV -> pixel (x, y)
+GET /api/inspect/{id}?x&y
+  -> read Z_metric[y, x], Z_ground[y, x]
+  -> h_AGL = Z_metric - Z_ground
+  -> pixel -> lat/lon via affine transform (georeferenced scenes only)
+  -> return coordinates + metrics
+```
 
-1. **The Contract-First Pattern:** The backend and frontend communicate exclusively via standard JSON contracts (detailed in `05_TRD_AND_API_SPECS.md`). Tarun, Aarav, and Spoorthy can build the entire UI and 3D viewport using mock JSON data without waiting for the Python AI pipeline to finish!
-2. **Preset Caching:** All 4 benchmark scenes (Urban, Sparse, Mountain, Forest) have their textures, calibrated DSMs, and ground truth metrics stored locally. When a judge clicks "Mountain Scene", it does not run a 10-second AI calculation—it loads immediately.
-3. **Stateless Processing:** Uploaded images do not rely on server session memory. Every scene gets a unique `scene_id` (UUID), and all its assets are cleanly filed in `/data/{scene_id}/`.
+## Coordinate Conventions
+Getting these wrong is the most common source of misaligned inspection results:
+
+- Raster arrays are indexed `[row, col]` = `[y, x]`, origin **top-left**.
+- Texture UVs have origin **bottom-left** → `pixel_y = (1 - uv.y) * height`.
+- Pixel → world coordinates uses the rasterio affine transform from the source
+  GeoTIFF; it is undefined for non-georeferenced input, which must report pixel
+  coordinates only.
+- All rasters in a scene (optical, DSM, ground truth) are resampled to a common
+  1024×1024 grid before any pixel-wise comparison.

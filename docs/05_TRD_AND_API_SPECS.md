@@ -1,36 +1,21 @@
-# 📡 Technical Requirements & API Specifications (TRD)
-## Project DepthWizard — ISRO Problem Statement 26175
+# API Specification
 
----
-
-## 1. Purpose of this Document
-This document is the **unbreakable contract between the Backend Squad (You, Dheer, Hasini) and the Frontend Squad (Tarun, Aarav, Spoorthy)**.  
-By reading this document, the Frontend Squad can build the entire Three.js viewport, HUD controls, and elevation profile charts with mock JSON data immediately, without waiting for the Python AI pipeline to finish.
-
----
-
-## 2. API Endpoints Overview
-
+## Endpoints
 | Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/health` | Service health status check |
-| `GET` | `/api/scenes` | Get list of all available scenes (including 4 presets) |
-| `GET` | `/api/scenes/{scene_id}` | Get full metadata & texture URLs for a specific scene |
-| `POST` | `/api/upload` | Upload a new `.png`, `.jpg`, or `.tif` satellite file |
-| `POST` | `/api/predict/{scene_id}` | Run height estimation & metric calibration on a scene |
-| `GET` | `/api/inspect/{scene_id}` | Query real-world elevation and building height at pixel $(x, y)$ |
-| `POST` | `/api/transect/{scene_id}` | Get 2D elevation profile array between Point A and Point B |
-| `GET` | `/api/benchmarks` | Get official accuracy metrics table across all 4 terrain types |
-| `GET` | `/api/export/{scene_id}` | Download calibrated GeoTIFF (`.tif`) or 3D model asset |
+|---|---|---|
+| GET | `/api/health` | Service health check |
+| GET | `/api/scenes` | List all scenes (presets + uploaded) |
+| GET | `/api/scenes/{scene_id}` | Full metadata + asset URLs for one scene |
+| POST | `/api/upload` | Upload a `.png`/`.jpg`/`.tif` file |
+| POST | `/api/predict/{scene_id}` | Run depth estimation + calibration |
+| GET | `/api/inspect/{scene_id}` | Elevation/height at pixel (x, y) |
+| POST | `/api/transect/{scene_id}` | Elevation profile between two points |
+| GET | `/api/benchmarks` | Accuracy metrics across all terrain types |
+| GET | `/api/export/{scene_id}` | Download calibrated GeoTIFF |
 
----
+## Contracts
 
-## 3. Detailed Request & Response Contracts
-
-### 3.1 `GET /api/scenes`
-Returns the list of pre-loaded benchmark scenes (Urban, Sparse, Mountain, Forest) and any uploaded scenes.
-
-**Response `200 OK`:**
+### `GET /api/scenes` → `200 OK`
 ```json
 [
   {
@@ -41,43 +26,11 @@ Returns the list of pre-loaded benchmark scenes (Urban, Sparse, Mountain, Forest
     "thumbnail_url": "/static/thumbnails/urban.jpg",
     "min_elevation_m": 42.5,
     "max_elevation_m": 184.2
-  },
-  {
-    "id": "sparse-plains-02",
-    "name": "Agricultural Plains (Punjab)",
-    "landscape_type": "sparse",
-    "is_georeferenced": true,
-    "thumbnail_url": "/static/thumbnails/sparse.jpg",
-    "min_elevation_m": 210.0,
-    "max_elevation_m": 235.4
-  },
-  {
-    "id": "mountain-himalayas-03",
-    "name": "Mountain Ridges (Himachal)",
-    "landscape_type": "mountain",
-    "is_georeferenced": true,
-    "thumbnail_url": "/static/thumbnails/mountain.jpg",
-    "min_elevation_m": 1420.0,
-    "max_elevation_m": 3150.0
-  },
-  {
-    "id": "forest-western-ghats-04",
-    "name": "Forested Canopy (Western Ghats)",
-    "landscape_type": "forest",
-    "is_georeferenced": true,
-    "thumbnail_url": "/static/thumbnails/forest.jpg",
-    "min_elevation_m": 610.0,
-    "max_elevation_m": 890.0
   }
 ]
 ```
 
----
-
-### 3.2 `GET /api/scenes/{scene_id}`
-Returns all assets required by the Three.js viewport to build and drape the 3D terrain.
-
-**Response `200 OK`:**
+### `GET /api/scenes/{scene_id}` → `200 OK`
 ```json
 {
   "id": "urban-ahmedabad-01",
@@ -86,16 +39,11 @@ Returns all assets required by the Three.js viewport to build and drape the 3D t
   "is_georeferenced": true,
   "crs": "EPSG:32643",
   "bounds": {
-    "min_lon": 72.5012,
-    "min_lat": 23.0114,
-    "max_lon": 72.5428,
-    "max_lat": 23.0456
+    "min_lon": 72.5012, "min_lat": 23.0114,
+    "max_lon": 72.5428, "max_lat": 23.0456
   },
   "elevation_stats": {
-    "min_m": 42.5,
-    "max_m": 184.2,
-    "mean_m": 68.3,
-    "ground_base_m": 45.0
+    "min_m": 42.5, "max_m": 184.2, "mean_m": 68.3, "ground_base_m": 45.0
   },
   "assets": {
     "optical_texture_url": "/static/optical/urban-ahmedabad-01.png",
@@ -105,13 +53,7 @@ Returns all assets required by the Three.js viewport to build and drape the 3D t
 }
 ```
 
----
-
-### 3.3 `POST /api/upload`
-Uploads a custom image from the user's computer.
-
-**Request:** `multipart/form-data` with field `file`.  
-**Response `201 Created`:**
+### `POST /api/upload` (multipart/form-data, field `file`) → `201 Created`
 ```json
 {
   "scene_id": "custom-scene-98f2",
@@ -122,23 +64,12 @@ Uploads a custom image from the user's computer.
 }
 ```
 
----
-
-### 3.4 `GET /api/inspect/{scene_id}?x=512&y=420`
-Used when the user clicks a point on the 3D model.
-
-**Query Parameters:**
-- `x`: Pixel X coordinate on the $1024 \times 1024$ raster grid.
-- `y`: Pixel Y coordinate on the $1024 \times 1024$ raster grid.
-
-**Response `200 OK`:**
+### `GET /api/inspect/{scene_id}?x=512&y=420` → `200 OK`
+`x`/`y` are pixel coordinates on the 1024×1024 raster grid.
 ```json
 {
   "pixel": {"x": 512, "y": 420},
-  "coordinates": {
-    "latitude": 23.022514,
-    "longitude": 72.571408
-  },
+  "coordinates": {"latitude": 23.022514, "longitude": 72.571408},
   "metrics": {
     "absolute_elevation_m": 418.2,
     "estimated_ground_level_m": 363.6,
@@ -149,12 +80,8 @@ Used when the user clicks a point on the 3D model.
 }
 ```
 
----
-
-### 3.5 `POST /api/transect/{scene_id}`
-Used when the user draws a cross-section line across the terrain.
-
-**Request Body:**
+### `POST /api/transect/{scene_id}` → `200 OK`
+Request:
 ```json
 {
   "start_pixel": {"x": 100, "y": 150},
@@ -162,8 +89,7 @@ Used when the user draws a cross-section line across the terrain.
   "samples": 100
 }
 ```
-
-**Response `200 OK`:**
+Response:
 ```json
 {
   "distance_total_m": 1240.5,
@@ -171,112 +97,89 @@ Used when the user draws a cross-section line across the terrain.
   "max_elevation_m": 184.2,
   "profile": [
     {"dist_m": 0.0, "elevation_m": 45.2},
-    {"dist_m": 12.4, "elevation_m": 45.8},
-    {"dist_m": 24.8, "elevation_m": 46.5},
-    {"dist_m": 37.2, "elevation_m": 120.4},
-    {"dist_m": 49.6, "elevation_m": 184.2}
+    {"dist_m": 12.4, "elevation_m": 45.8}
   ]
 }
 ```
 
----
-
-### 3.6 `GET /api/benchmarks`
-Returns the accuracy metrics table for the 50% ISRO evaluation rubric.
-
-**Response `200 OK`:**
+### `GET /api/benchmarks` → `200 OK`
 ```json
 {
   "validation_dataset": "GAMUS + Copernicus DEM GLO-30 Ground Truth",
   "evaluated_at": "2026-09-04T12:00:00Z",
   "summary_metrics": {
-    "overall_rmse_m": 3.58,
-    "overall_mae_m": 2.60,
-    "overall_pearson_r": 0.902
+    "overall_rmse_m": 3.58, "overall_mae_m": 2.60, "overall_pearson_r": 0.902
   },
   "stratified_results": [
     {
       "landscape_type": "Urban High-Rise",
-      "rmse_m": 3.82,
-      "mae_m": 2.61,
-      "pearson_r": 0.89,
+      "rmse_m": 3.82, "mae_m": 2.61, "pearson_r": 0.89,
       "dynamic_range": "50m - 184m"
-    },
-    {
-      "landscape_type": "Sparse Plains",
-      "rmse_m": 1.94,
-      "mae_m": 1.42,
-      "pearson_r": 0.94,
-      "dynamic_range": "210m - 235m"
-    },
-    {
-      "landscape_type": "Hilly Mountains",
-      "rmse_m": 5.11,
-      "mae_m": 3.88,
-      "pearson_r": 0.91,
-      "dynamic_range": "1420m - 3150m"
-    },
-    {
-      "landscape_type": "Forested Canopy",
-      "rmse_m": 3.45,
-      "mae_m": 2.50,
-      "pearson_r": 0.87,
-      "dynamic_range": "610m - 890m"
     }
   ]
 }
 ```
 
----
 
-## 4. Three.js Technical Implementation Specs (For Tarun)
-
-### Terrain Mesh Creation
-Tarun will create the 3D surface using a standard Three.js `PlaneGeometry`:
-```javascript
-import * as THREE from 'three';
-
-// 1. Create a high-density plane grid (512x512 segments)
-const geometry = new THREE.PlaneGeometry(100, 100, 512, 512);
-
-// 2. Load the Optical Satellite RGB texture
-const textureLoader = new THREE.TextureLoader();
-const colorTexture = textureLoader.load(sceneData.assets.optical_texture_url);
-
-// 3. Load the 16-bit Height displacement texture
-const displacementTexture = textureLoader.load(sceneData.assets.height_map_url);
-
-// 4. Create standard physical material with height displacement
-const material = new THREE.MeshStandardMaterial({
-  map: colorTexture,
-  displacementMap: displacementTexture,
-  displacementScale: 15.0, // Scaled visual amplitude
-  roughness: 0.8,
-  metalness: 0.1
-});
-
-const terrainMesh = new THREE.Mesh(geometry, material);
-terrainMesh.rotation.x = -Math.PI / 2; // Lay flat like earth
-scene.add(terrainMesh);
-```
-
-### Drone Camera Flight Spline
-To implement the **"▶ CINEMATIC FLIGHT"** button without manual piloting:
-```javascript
-// Define a smooth 3D flight path above the terrain
-const curve = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(-40, 25, 40),
-  new THREE.Vector3(0, 15, 20),
-  new THREE.Vector3(30, 20, -10),
-  new THREE.Vector3(0, 30, -30),
-  new THREE.Vector3(-40, 25, 40)
-]);
-
-// Inside the render loop:
-function updateDroneFlight(progress) {
-  const point = curve.getPoint(progress);
-  const lookAtPoint = curve.getPoint((progress + 0.05) % 1.0);
-  camera.position.copy(point);
-  camera.lookAt(lookAtPoint);
+### `POST /api/predict/{scene_id}` → `200 OK`
+Runs inference + calibration. Idempotent: re-running overwrites derived assets.
+```json
+{
+  "scene_id": "custom-scene-98f2",
+  "mode": "metric",
+  "calibration": {"scale_s": 142.7, "offset_t": 38.4, "reference": "SRTM-30m"},
+  "elevation_stats": {"min_m": 42.5, "max_m": 184.2, "mean_m": 68.3},
+  "assets": {
+    "height_map_url": "/static/cache/custom-scene-98f2_disp.png",
+    "geotiff_download_url": "/static/dsm/custom-scene-98f2_metric.tif"
+  },
+  "processing_time_s": 4.2
 }
 ```
+For non-georeferenced input, `mode` is `"relative"`, `calibration` is `null`,
+and `elevation_stats` are reported as normalized `0.0–1.0` under
+`relative_stats` instead of meters.
+
+## Validation Rules
+| Field | Rule |
+|---|---|
+| upload `file` | `.png`, `.jpg`, `.tif` only; ≤ 20MB |
+| `x`, `y` | integers within `[0, 1023]` |
+| `samples` (transect) | integer `2–1000`, default `100` |
+| `scene_id` | must exist in `scenes`, else `404` |
+
+## Error Contract
+All errors return this shape with the appropriate status code:
+```json
+{
+  "error": "unsupported_format",
+  "message": "Only .png, .jpg and .tif files are accepted.",
+  "detail": {"received": "image/webp"}
+}
+```
+
+| Status | `error` | Cause |
+|---|---|---|
+| `400` | `unsupported_format` | Extension/MIME not in the allowed set |
+| `400` | `invalid_pixel` | `x`/`y` outside the raster grid |
+| `404` | `scene_not_found` | Unknown `scene_id` |
+| `409` | `not_predicted` | Inspect/transect called before `/api/predict` |
+| `413` | `file_too_large` | Upload exceeds 20MB |
+| `422` | `calibration_failed` | Degenerate affine fit (flat scene, no DEM overlap) |
+| `500` | `internal_error` | Unhandled server fault |
+
+The client must render every one of these as an inline toast and keep the
+current scene on screen — see the error handling notes in
+`07_FRONTEND_IMPLEMENTATION.md`.
+
+## Conventions
+- Metric fields are suffixed `_m` and are **only** present for georeferenced
+  scenes. Clients must branch on `is_georeferenced` rather than assuming meters.
+- Pixel coordinates are always on the 1024×1024 raster grid, origin top-left.
+- Timestamps are ISO 8601 UTC.
+- Static assets are served under `/static/`; the API never returns file system
+  paths.
+
+## Client Reference
+Three.js terrain, camera flight, raycast picking, and Chart.js transect
+implementations live in `07_FRONTEND_IMPLEMENTATION.md`.

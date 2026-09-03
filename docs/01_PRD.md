@@ -1,91 +1,90 @@
-# 📋 Product Requirements Document (PRD)
-## Project DepthWizard — ISRO Problem Statement 26175
-**Single-View Height Estimation and 3D Flythrough**  
-*Target Milestone: Internal Hackathon Screening (September 10, 2026)*
+# Product Requirements Document (PRD)
+## DepthWizard — Single-View Height Estimation and 3D Flythrough
+ISRO Problem Statement 26175 · Target milestone: Sept 10, 2026
 
----
+## Summary
+DepthWizard converts a single optical satellite image into a calibrated Digital
+Surface Model (DSM) and renders it as an interactive 3D terrain in the browser.
 
-## 1. Executive Summary & Plain-English Explanation
-Imagine taking a flat, top-down satellite photo of a city or a mountain range taken by an Indian Space Research Organisation (ISRO) satellite. Usually, to know how tall a building or mountain is, you need expensive LiDAR laser planes or two satellite pictures taken from different angles (stereo photogrammetry). 
+1. Estimate relative height from one RGB image (monocular depth).
+2. Calibrate relative height into real-world meters using open elevation
+   baselines (SRTM 30m / Copernicus GLO-30) when the image is georeferenced.
+3. Render the result as a flyable 3D terrain with the original imagery draped
+   on top, plus point/height inspection and cross-section tools.
 
-**DepthWizard solves this with single-image artificial intelligence:**
-You feed in **one single optical satellite picture**, and the software:
-1. Figures out the heights of buildings, trees, and mountain slopes.
-2. Calibrates those heights into **actual real-world meters** (using open elevation baselines like SRTM or Copernicus).
-3. Turns that flat image into an interactive **3D terrain world in your web browser**, allowing you to fly a virtual drone through the city or over mountains like a video game, while letting you click on any building to see its exact height in meters.
+## Target Users
+- Remote sensing analysts needing elevation profiles without stereo passes.
+- Disaster management teams needing rapid 3D terrain/slope views.
+- Urban planners measuring building heights from aerial imagery.
+- Hackathon evaluators (live demo must be stable, offline-capable, accurate).
 
----
+## Scope
 
-## 2. Who is this for? (User Personas)
-1. **ISRO Remote Sensing Analyst:** Wants to verify elevation profiles across India without waiting months for expensive stereo satellite passes.
-2. **Disaster Management Commander (NDRF):** Needs instant 3D terrain and slope analysis after a landslide, flood, or earthquake to plan helicopter landing zones and evacuation paths.
-3. **Urban Town Planner:** Wants to measure skyscraper heights, roof slopes, and building densities from regular aerial imagery.
-4. **Hackathon Evaluator (The Immediate Judge):** Wants to see a stable, responsive, scientifically sound demonstration that works live without crashing, showing clear quantitative accuracy (RMSE/MAE).
+### P0 — Required
+- Dual input pipelines:
+  - Non-georeferenced (`.png`, `.jpg`) → relative DSM (0–100% normalized).
+  - Georeferenced (`.tif`/GeoTIFF) → absolute metric DSM via affine
+    calibration against SRTM/Copernicus baselines.
+- 3D WebGL viewport at 45–60 FPS on integrated GPUs (e.g. Intel UHD).
+- Optical texture draping onto the height-displaced terrain mesh.
+- Camera navigation: scripted cinematic flythrough + manual orbit/WASD.
+- 4 preloaded benchmark scenes: Urban, Sparse Plains, Mountains, Forest.
+- Point inspection: click → lat/lon, elevation (Z), height above ground (AGL).
+- Validation dashboard: RMSE, MAE, Pearson r vs. ground truth.
+- Fully offline/air-gapped operation (no external network calls at runtime).
 
----
+### P1 — Planned after P0 is stable
+- 2D cross-section (transect) elevation profile tool.
+- Layer toggle: RGB / elevation heatmap / hillshade-slope.
+- GeoTIFF export of the calibrated DSM.
 
-## 3. Scope & Feature Prioritization (MoSCoW Matrix)
+### P2 — Out of scope for this milestone
+- Multi-temporal stereo fusion.
+- SAR interferometry.
+- Multi-user/cloud accounts.
 
-To make sure our 6-person student team finishes by September 10th without burning out, we strictly prioritize what gets built:
+## Functional Requirements
+- **FR-1 Ingestion:** Accept `.png`, `.jpg`, `.tif` up to 20MB. Extract CRS,
+  bounding box, and ground sample distance from GeoTIFFs; treat non-georeferenced
+  files as relative-mode without error.
+- **FR-2 Depth estimation:** Produce edge-preserving relative height from RGB
+  input; invert so ground = 0 and structures extrude upward.
+- **FR-3 Metric calibration:** For GeoTIFFs, align relative depth `d_rel` to a
+  real elevation baseline `Z_base` via affine scaling:
+  `Z_metric = s * d_rel + t`.
+- **FR-4 3D rendering:** WebGL (Three.js) rendering, GPU vertex displacement,
+  optical texture draped on the displaced mesh, 45–60 FPS target.
+- **FR-5 Validation:** Compute and display, per scene category:
+  - `RMSE = sqrt(mean((Z_pred - Z_gt)^2))`
+  - `MAE = mean(|Z_pred - Z_gt|)`
 
-### P0: Must Have (Non-Negotiable for Sept 10)
-- [x] **Dual Input Processing:**
-  - **Pipeline A (Non-georeferenced images: `.png`, `.jpg`):** Produces a Relative Digital Surface Model ($rDSM$) normalized between 0 and 100%.
-  - **Pipeline B (Georeferenced images: `.tif`, GeoTIFF):** Reads geographic coordinates, fetches/matches regional baseline elevation (Copernicus 30m / SRTM), and outputs an Absolute Metric Digital Surface Model ($DSM$) in real meters.
-- [x] **High-Performance 3D Viewport:** Runs smoothly at 60 FPS in Chrome on ordinary student laptops (Intel Core i3 with integrated Intel UHD Graphics).
-- [x] **Optical Texture Draping:** The original color satellite photo is projected perfectly onto the 3D height-displaced terrain.
-- [x] **Dual Flight Navigation:**
-  - **Cinematic Auto-Flythrough:** A single button click takes the evaluators on a smooth, automated camera sweep across the terrain.
-  - **Manual Drone Flight:** Orbit controls (mouse drag/zoom) + First-person WASD navigation.
-- [x] **4 Pre-Loaded Benchmark Scenes:** Instant one-click presets for **Urban Core, Sparse Plains, Hilly Mountains, and Forested Canopy** (so a live demo never fails due to slow file uploads).
-- [x] **Point Height Inspection:** Click any building or point on the 3D map $\rightarrow$ displays latitude/longitude, elevation above sea level ($Z$), and height above ground level ($h_{AGL}$).
-- [x] **Validation Dashboard:** Defensible accuracy table displaying **RMSE, MAE, and Pearson Correlation ($r$)** against reference ground truth.
-- [x] **Air-Gapped Offline Mode:** Zero dependencies on hall Wi-Fi during the presentation.
+## Non-Functional Requirements
+1. Scene load time under 2.0s for any of the 4 benchmark presets.
+2. Invalid/corrupted uploads show a UI error state, never a blank crash screen.
+3. No runtime dependency on internet access (all assets/models bundled locally).
+4. No CLI interaction required during a live demo — UI-only workflow.
 
-### P1: Should Have (Added once P0 is stable)
-- [ ] **2D Cross-Section Profile Tool:** Draw a 2-point transect line across a mountain or street $\rightarrow$ displays a 2D height cross-section graph.
-- [ ] **Multi-Layer Shader Toggle:** Switch between Natural Optical RGB, False-Color Elevation Heatmap (Turbo/Viridis), and Hillshade/Slope Hazard map.
-- [ ] **Geospatial Export:** Download the generated height map as a calibrated GeoTIFF (`.tif`) that can be opened in QGIS or ArcGIS.
+## Acceptance Criteria
+Each P0 item is considered done only when it meets a measurable check:
 
-### P2: Won't Have for Sept 10 (Future Finale Scope)
-- [ ] Multi-temporal stereo imagery fusion.
-- [ ] Synthetic Aperture Radar (SAR) interferometry integration.
-- [ ] Multi-user cloud collaboration accounts.
+| Feature | Passing condition |
+|---|---|
+| Preset load | All 4 scenes render textured terrain in < 2.0s from click |
+| Frame rate | ≥ 45 FPS sustained during flight on integrated graphics |
+| Texture draping | Roads/roofs align with their displaced geometry, no visible offset |
+| Point inspection | Clicked rooftop reports AGL within ±15% of the reference AGL raster |
+| Metric mode | Exported GeoTIFF opens in QGIS with correct CRS and meter values |
+| Relative mode | `.png`/`.jpg` input completes without error and reports no meters |
+| Validation table | RMSE/MAE/Pearson r populated for all 4 landscape types |
+| Offline | Full demo completes with the network adapter disabled |
+| Error handling | Uploading a `.webp` or corrupt file shows a toast, viewport survives |
 
----
-
-## 4. Functional Requirements
-
-### FR-1: Image Ingestion & Metadata Parsing
-- The system must accept `.png`, `.jpg`, and `.tif` files up to 20MB.
-- If the file is a GeoTIFF (`.tif`), the system extracts its Coordinate Reference System (CRS, e.g., EPSG:4326 or EPSG:32643), spatial bounding box, and ground sample distance (GSD).
-- If the file is a standard `.png` or `.jpg`, the system flags it as relative mode without throwing errors.
-
-### FR-2: Elevation Extraction & Inversion
-- Ingest optical RGB channels.
-- Generate edge-preserving relative depth where building boundaries and mountain ridges remain crisp.
-- Automatically invert depth so flat ground is at elevation 0 and tall structures extrude upwards.
-
-### FR-3: Metric Elevation Calibration (Affine Alignment)
-- For GeoTIFFs, align predicted relative height $d_{rel}$ to real-world elevation baseline $Z_{base}$ using linear affine scaling:
-  $$Z_{metric} = s \cdot d_{rel} + t$$
-- Scale $s$ and translation offset $t$ must map the dynamic range realistically to regional sea-level and ground heights.
-
-### FR-4: Interactive 3D WebGL Visualization
-- Must render in WebGL using Three.js without requiring browser plugins.
-- Must achieve at least 45–60 FPS on integrated Intel UHD graphics.
-- Drapes the RGB optical texture directly on top of the displaced terrain vertices.
-
-### FR-5: Quantitative Validation Engine
-- For evaluation scenes with reference data, compute:
-  $$\text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^N (Z_{pred}^{(i)} - Z_{gt}^{(i)})^2}$$
-  $$\text{MAE} = \frac{1}{N}\sum_{i=1}^N |Z_{pred}^{(i)} - Z_{gt}^{(i)}|$$
-- Display the results clearly in a table categorized across the 4 ISRO terrain categories.
-
----
-
-## 5. Non-Functional Requirements
-1. **Performance & Lightweight Execution:** The web application must initialize and load any of the 4 benchmark scenes in under 2.0 seconds.
-2. **Crash Resilience:** If an invalid file or corrupted image is uploaded, the UI must show a friendly error toast rather than a white blank screen.
-3. **Zero-Internet Presentation Safety:** All models, scripts, 3D libraries, and sample tiles must be stored locally on the presentation machine.
-4. **Intuitive Student/Evaluator Usability:** No command-line commands during the live demo; everything is accessible via clear buttons and toggles on the web UI.
+## Known Constraints
+- A 30m reference DEM cannot resolve individual buildings; absolute accuracy on
+  urban scenes is bounded by the baseline, and RMSE is expected to be worst on
+  urban and best on sparse plains.
+- Monocular depth is scale-ambiguous by construction — without georeferencing
+  there is no way to recover meters, which is why relative mode never reports
+  metric units.
+- Shadowed facades and dense canopy have weakly constrained depth; canopy AGL
+  reflects the top of the canopy surface, not the ground beneath it.
