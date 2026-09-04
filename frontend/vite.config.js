@@ -5,11 +5,8 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      // Forward API requests to FastAPI backend when running
       '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true
-      },
-      '/static': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true
       }
