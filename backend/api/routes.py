@@ -44,7 +44,7 @@ def list_scenes():
             "name": s["name"],
             "landscape_type": s["landscape_type"],
             "is_georeferenced": bool(s["is_georeferenced"]),
-            "thumbnail_url": f"/static/thumbnails/{s['landscape_type']}.jpg",
+            "thumbnail_url": s["optical_path"] or "/static/demo_data/dc-03-26/optical.png",
             "min_elevation_m": s["min_elevation_m"],
             "max_elevation_m": s["max_elevation_m"]
         })

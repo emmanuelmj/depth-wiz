@@ -6,7 +6,7 @@ export const DEFAULT_SCENE = {
   name: "Urban Core (Tile DC_03_26)",
   landscape_type: "urban",
   is_georeferenced: true,
-  thumbnail_url: "/static/thumbnails/urban.jpg",
+  thumbnail_url: "/static/demo_data/dc-03-26/optical.png",
   min_elevation_m: 45.0,
   max_elevation_m: 87.6,
   crs: "EPSG:32643",
