@@ -210,8 +210,13 @@ def inspect_point(scene_id: str, x: int = Query(..., ge=0, le=1024), y: int = Qu
             px = min(im.width - 1, max(0, x))
             py = min(im.height - 1, max(0, y))
             val = im.getpixel((px, py))
+            if isinstance(val, (tuple, list)):
+                val = val[0]
             if isinstance(val, (int, float)):
-                relative_height = float(val) / (65535.0 if val > 255 else 255.0)
+                if "16" in im.mode or val > 255:
+                    relative_height = float(val) / 65535.0
+                else:
+                    relative_height = float(val) / 255.0
         except Exception:
             pass
 
@@ -276,7 +281,7 @@ def generate_transect(scene_id: str, body: TransectRequest):
             pass
 
     profile = []
-    samples = body.samples
+    samples = max(2, body.samples)
     for i in range(samples):
         t = i / float(samples - 1)
         cur_dist = round(t * distance_total_m, 1)
@@ -285,22 +290,43 @@ def generate_transect(scene_id: str, body: TransectRequest):
             px = int(min(disp_img.width - 1, max(0, p1[0] + t * (p2[0] - p1[0]))))
             py = int(min(disp_img.height - 1, max(0, p1[1] + t * (p2[1] - p1[1]))))
             val = disp_img.getpixel((px, py))
-            rel = float(val) / (65535.0 if val > 255 else 255.0)
+            if isinstance(val, (tuple, list)):
+                val = val[0]
+            if "16" in disp_img.mode or val > 255:
+                rel = float(val) / 65535.0
+            else:
+                rel = float(val) / 255.0
             cur_elev = round(min_elev + rel * elev_range, 1)
         else:
             wave = 0.5 + 0.35 * math.sin(t * math.pi * 3) + 0.15 * math.sin(t * 18.0)
             wave = min(1.0, max(0.0, wave))
             cur_elev = round(min_elev + wave * elev_range, 1)
 
-        profile.append({"dist_m": cur_dist, "elevation_m": cur_elev})
+        profile.append({
+            "distance_m": cur_dist,
+            "elevation_m": cur_elev
+        })
 
-    elevations = [p["elevation_m"] for p in profile]
+    elevations = [p["elevation_m"] for p in profile] or [min_elev]
+
+
+    try:
+        queries.save_transect_profile(
+            scene_id=scene_id,
+            start_x=p1[0], start_y=p1[1],
+            end_x=p2[0], end_y=p2[1],
+            profile_json=json.dumps(profile)
+        )
+    except Exception:
+        pass
+
     return {
         "distance_total_m": distance_total_m,
         "min_elevation_m": min(elevations),
         "max_elevation_m": max(elevations),
         "profile": profile
     }
+
 
 
 @router.get("/benchmarks")

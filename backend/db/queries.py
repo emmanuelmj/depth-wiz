@@ -35,7 +35,7 @@ def get_benchmarks() -> List[Dict[str, Any]]:
 def insert_scene(scene_data: Dict[str, Any]):
     conn = get_db_connection()
     conn.execute("""
-        INSERT INTO scenes 
+        INSERT OR REPLACE INTO scenes 
         (id, name, landscape_type, file_format, is_georeferenced, crs,
          bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y,
          optical_path, dsm_path, height_texture, min_elevation_m, max_elevation_m)

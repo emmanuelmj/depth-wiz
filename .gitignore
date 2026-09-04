@@ -41,6 +41,8 @@ data/optical/
 data/dsm/
 data/cache/
 data/ground_truth/
+data/uploads/*
+!data/uploads/.gitkeep
 !data/sample/DC_03_26_RGB.h5
 
 # OS & IDE
