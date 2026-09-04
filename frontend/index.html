@@ -151,6 +151,32 @@
           <span style="margin-left:12px; opacity:0.5;">Click ⏸ to exit</span>
         </div>
 
+        <!-- FIRST-PERSON CROSSHAIR RETICLE -->
+        <div id="street-reticle" class="street-reticle" style="display: none;">
+          <div class="reticle-dot"></div>
+        </div>
+
+        <!-- FIRST-PERSON STREET DRIVE HUD -->
+        <div id="street-hud" class="street-hud" style="display: none;">
+          <div class="street-hud-pill">
+            <span class="hud-badge-tag">🚗 STREET DRIVE</span>
+            <div id="street-lock-status" class="lock-status-badge unlocked">
+              <span class="lock-icon">🔓</span>
+              <span id="lock-hint-text">Click 3D view to lock cursor & look</span>
+            </div>
+            <div class="key-badges">
+              <span class="key-k">W</span><span class="key-k">A</span><span class="key-k">S</span><span class="key-k">D</span> Move
+              <span class="key-sep">·</span>
+              <span class="key-k">Shift</span> Sprint
+              <span class="key-sep">·</span>
+              <span class="key-k">Mouse</span> Look
+              <span class="key-sep">·</span>
+              <span class="key-k">Esc</span> Unlock
+            </div>
+            <div class="speed-stat">Speed: <span id="street-speed" style="color: #00FFA3; font-weight: 700;">0</span> km/h</div>
+          </div>
+        </div>
+
         <!-- POINT INSPECTION BADGE -->
         <div id="inspector-badge" class="inspector-badge"></div>
       </main>

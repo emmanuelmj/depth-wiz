@@ -1,25 +1,24 @@
 import * as THREE from 'three';
 
 let isStreetMode = false;
+let isPointerLocked = false;
 let cameraRef = null;
 let controlsRef = null;
-let roadMaskGrid = null; // 2D array or function (x, z) => isWalkable
-let gridResolution = 64;
-let planeSize = 100;
+let canvasRef = null;
 
 // Camera Euler angles
 let yaw = 0;
 let pitch = 0;
-const PITCH_LIMIT = Math.PI / 2.2; // ~81 degrees
+const PITCH_LIMIT = Math.PI / 2.15; // ~83 degrees (can look almost straight up at high-rises)
 
 // Movement & Velocity
 const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 let speed = 0;
-const WALK_SPEED = 24.0; // units per second
+const WALK_SPEED = 22.0; // units per second
 const SPRINT_MULTIPLIER = 1.8;
-const DAMPING = 8.5;
-const EYE_HEIGHT = 1.2;
+const DAMPING = 8.0;
+let streetElevation = 1.8; // Default eye height above street
 
 // Key state
 const keys = {
@@ -30,74 +29,82 @@ const keys = {
   sprint: false
 };
 
-// Mouse dragging state
-let isMouseDown = false;
-let previousMousePosition = { x: 0, y: 0 };
 let onStateChangeCallback = null;
 
 export function initStreetNavigator(camera, controls, canvas, onStateChange) {
   cameraRef = camera;
   controlsRef = controls;
+  canvasRef = canvas;
   onStateChangeCallback = onStateChange;
 
   // Keyboard events
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
 
-  // Mouse look events (click and drag to look around streets)
-  canvas.addEventListener('mousedown', (e) => {
-    if (!isStreetMode) return;
-    if (e.button === 0) { // Left click
-      isMouseDown = true;
-      previousMousePosition = { x: e.clientX, y: e.clientY };
+  // Click strictly on the right-side canvas to lock mouse pointer in Street mode
+  canvas.addEventListener('click', () => {
+    if (isStreetMode && !isPointerLocked) {
+      canvas.requestPointerLock();
     }
   });
 
-  window.addEventListener('mouseup', () => {
-    isMouseDown = false;
+  // Pointer lock change listener (handles Esc natively)
+  document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = (document.pointerLockElement === canvas);
+
+    const lockHint = document.getElementById('lock-hint-text');
+    const lockStatus = document.getElementById('street-lock-status');
+    const reticle = document.getElementById('street-reticle');
+
+    if (isPointerLocked) {
+      if (lockHint) lockHint.innerText = 'Mouse Look Active · Esc to Unlock';
+      if (lockStatus) {
+        lockStatus.classList.remove('unlocked');
+        lockStatus.classList.add('locked');
+        const icon = lockStatus.querySelector('.lock-icon');
+        if (icon) icon.innerText = '🔒';
+      }
+      if (reticle) reticle.style.display = 'block';
+    } else {
+      if (lockHint) lockHint.innerText = 'Click 3D view to lock cursor & look';
+      if (lockStatus) {
+        lockStatus.classList.remove('locked');
+        lockStatus.classList.add('unlocked');
+        const icon = lockStatus.querySelector('.lock-icon');
+        if (icon) icon.innerText = '🔓';
+      }
+      if (reticle) reticle.style.display = 'none';
+    }
   });
 
+  // Mouse move event for FPS pointer look
   window.addEventListener('mousemove', (e) => {
-    if (!isStreetMode || !isMouseDown) return;
+    if (!isStreetMode) return;
 
-    const deltaX = e.clientX - previousMousePosition.x;
-    const deltaY = e.clientY - previousMousePosition.y;
+    // Only rotate camera when pointer is locked strictly inside the 3D viewport canvas
+    if (isPointerLocked) {
+      const movementX = e.movementX || 0;
+      const movementY = e.movementY || 0;
 
-    previousMousePosition = { x: e.clientX, y: e.clientY };
-
-    const SENSITIVITY = 0.0028;
-    yaw -= deltaX * SENSITIVITY;
-    pitch -= deltaY * SENSITIVITY;
-    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
-  });
-
-  // Touch look for mobile/tablet if needed
-  canvas.addEventListener('touchstart', (e) => {
-    if (!isStreetMode || e.touches.length === 0) return;
-    isMouseDown = true;
-    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  });
-
-  window.addEventListener('touchend', () => {
-    isMouseDown = false;
-  });
-
-  window.addEventListener('touchmove', (e) => {
-    if (!isStreetMode || !isMouseDown || e.touches.length === 0) return;
-    const deltaX = e.touches[0].clientX - previousMousePosition.x;
-    const deltaY = e.touches[0].clientY - previousMousePosition.y;
-    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-
-    const SENSITIVITY = 0.0035;
-    yaw -= deltaX * SENSITIVITY;
-    pitch -= deltaY * SENSITIVITY;
-    pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+      const SENSITIVITY = 0.0022;
+      yaw -= movementX * SENSITIVITY;
+      pitch -= movementY * SENSITIVITY;
+      pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch));
+    }
   });
 }
 
 function onKeyDown(e) {
   if (e.code === 'Escape' && isStreetMode) {
-    disableStreetMode();
+    if (isPointerLocked) {
+      if (document.exitPointerLock) {
+        document.exitPointerLock();
+      }
+      // Do not exit street mode on first Esc: just unlock cursor
+    } else {
+      // If cursor is already unlocked, pressing Esc exits Street mode back to Orbit
+      disableStreetMode();
+    }
     return;
   }
 
@@ -152,66 +159,18 @@ function onKeyUp(e) {
   }
 }
 
-export function setRoadMask(maskArray, resolution = 64, size = 100) {
-  roadMaskGrid = maskArray;
-  gridResolution = resolution;
-  planeSize = size;
-}
-
-export function isRoadWalkable(worldX, worldZ) {
-  if (!roadMaskGrid) return true;
-
-  const halfSize = planeSize / 2;
-  const gx = Math.floor(((worldX + halfSize) / planeSize) * gridResolution);
-  const gz = Math.floor(((worldZ + halfSize) / planeSize) * gridResolution);
-
-  if (gx < 0 || gx >= gridResolution || gz < 0 || gz >= gridResolution) {
-    return false; // Boundary limit
-  }
-
-  const idx = gz * gridResolution + gx;
-  return roadMaskGrid[idx] === 1; // 1 = road/walkable, 0 = building
-}
-
-export function findInitialRoadPosition() {
-  if (!roadMaskGrid) return new THREE.Vector3(0, EYE_HEIGHT, 0);
-
-  // Search near center for a true road coordinate
-  const halfSize = planeSize / 2;
-  const centerG = Math.floor(gridResolution / 2);
-
-  for (let radius = 0; radius < gridResolution / 2; radius++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dz = -radius; dz <= radius; dz++) {
-        const gx = centerG + dx;
-        const gz = centerG + dz;
-        if (gx >= 0 && gx < gridResolution && gz >= 0 && gz < gridResolution) {
-          if (roadMaskGrid[gz * gridResolution + gx] === 1) {
-            const wx = (gx / gridResolution) * planeSize - halfSize;
-            const wz = (gz / gridResolution) * planeSize - halfSize;
-            return new THREE.Vector3(wx, EYE_HEIGHT, wz);
-          }
-        }
-      }
-    }
-  }
-
-  return new THREE.Vector3(0, EYE_HEIGHT, 0);
-}
-
 export function enableStreetMode() {
   if (!cameraRef) return;
   isStreetMode = true;
 
   if (controlsRef) {
-    controlsRef.enabled = false; // Disable orbit controls in street mode
+    controlsRef.enabled = false;
   }
 
-  // Find a clear road intersection to spawn
-  const spawnPos = findInitialRoadPosition();
-  cameraRef.position.set(spawnPos.x, EYE_HEIGHT, spawnPos.z);
+  // Spawn on a main central street avenue
+  cameraRef.position.set(0, streetElevation, 15);
 
-  // Look toward north down the street corridor
+  // Look forward north down the street corridor
   yaw = 0;
   pitch = 0;
 
@@ -222,6 +181,19 @@ export function enableStreetMode() {
   keys.sprint = false;
   velocity.set(0, 0, 0);
 
+  // Reset lock indicator state (cursor stays free until clicking inside the right-side 3D canvas)
+  const lockHint = document.getElementById('lock-hint-text');
+  const lockStatus = document.getElementById('street-lock-status');
+  const reticle = document.getElementById('street-reticle');
+  if (lockHint) lockHint.innerText = 'Click 3D view to lock cursor & look';
+  if (lockStatus) {
+    lockStatus.classList.remove('locked');
+    lockStatus.classList.add('unlocked');
+    const icon = lockStatus.querySelector('.lock-icon');
+    if (icon) icon.innerText = '🔓';
+  }
+  if (reticle) reticle.style.display = 'none';
+
   if (onStateChangeCallback) {
     onStateChangeCallback(true);
   }
@@ -231,7 +203,24 @@ export function disableStreetMode() {
   if (!cameraRef) return;
   isStreetMode = false;
 
-  // Restore orbit controls
+  if (document.pointerLockElement) {
+    document.exitPointerLock();
+  }
+
+  const reticle = document.getElementById('street-reticle');
+  if (reticle) reticle.style.display = 'none';
+
+  const lockHint = document.getElementById('lock-hint-text');
+  const lockStatus = document.getElementById('street-lock-status');
+  if (lockHint) lockHint.innerText = 'Click 3D view to lock cursor & look';
+  if (lockStatus) {
+    lockStatus.classList.remove('locked');
+    lockStatus.classList.add('unlocked');
+    const icon = lockStatus.querySelector('.lock-icon');
+    if (icon) icon.innerText = '🔓';
+  }
+
+  // Restore OrbitControls to clean aerial satellite view
   if (controlsRef) {
     controlsRef.enabled = true;
     controlsRef.target.set(0, 0, 0);
@@ -265,11 +254,11 @@ export function updateStreetNavigator(delta) {
 
   const dt = Math.min(delta, 0.1);
 
-  // Calculate forward and right vectors based on yaw
+  // Calculate forward and right vectors based on current yaw heading
   const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
   const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
 
-  // Compute input direction
+  // Compute input direction from WASD
   direction.set(0, 0, 0);
   if (keys.forward) direction.add(forward);
   if (keys.backward) direction.sub(forward);
@@ -280,39 +269,25 @@ export function updateStreetNavigator(delta) {
     direction.normalize();
   }
 
-  // Apply acceleration
+  // Acceleration and damping
   const currentSpeedTarget = keys.sprint ? WALK_SPEED * SPRINT_MULTIPLIER : WALK_SPEED;
   velocity.x += direction.x * currentSpeedTarget * dt * 8.0;
   velocity.z += direction.z * currentSpeedTarget * dt * 8.0;
 
-  // Apply friction damping
   velocity.x -= velocity.x * DAMPING * dt;
   velocity.z -= velocity.z * DAMPING * dt;
 
   speed = Math.hypot(velocity.x, velocity.z);
 
-  // Proposed new position
-  const nextX = cameraRef.position.x + velocity.x * dt;
-  const nextZ = cameraRef.position.z + velocity.z * dt;
+  // Move camera within the 100x100 tile boundaries
+  const nextX = THREE.MathUtils.clamp(cameraRef.position.x + velocity.x * dt, -48, 48);
+  const nextZ = THREE.MathUtils.clamp(cameraRef.position.z + velocity.z * dt, -48, 48);
 
-  // Collision handling: check X movement
-  if (isRoadWalkable(nextX, cameraRef.position.z)) {
-    cameraRef.position.x = nextX;
-  } else {
-    velocity.x = 0; // stop against wall
-  }
+  cameraRef.position.x = nextX;
+  cameraRef.position.z = nextZ;
+  cameraRef.position.y = streetElevation;
 
-  // Check Z movement
-  if (isRoadWalkable(cameraRef.position.x, nextZ)) {
-    cameraRef.position.z = nextZ;
-  } else {
-    velocity.z = 0; // stop against wall
-  }
-
-  // Clamp camera height strictly to road eye level
-  cameraRef.position.y = EYE_HEIGHT;
-
-  // Apply camera rotation: yaw (heading) + pitch (elevation look)
+  // Apply FPS camera look target based on yaw and pitch
   const targetLook = new THREE.Vector3(
     cameraRef.position.x - Math.sin(yaw) * Math.cos(pitch),
     cameraRef.position.y + Math.sin(pitch),
@@ -327,10 +302,9 @@ export function getIsStreetMode() {
 }
 
 export function getStreetTelemetry() {
-  if (!cameraRef) return { speedKmH: 0, x: 0, z: 0 };
+  if (!cameraRef) return { speedKmH: 0, isLocked: false };
   return {
     speedKmH: Math.round(speed * 3.6),
-    x: Math.round(cameraRef.position.x * 10) / 10,
-    z: Math.round(cameraRef.position.z * 10) / 10
+    isLocked: isPointerLocked
   };
 }
