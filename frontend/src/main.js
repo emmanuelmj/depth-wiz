@@ -1,8 +1,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { initTerrain, updateTerrainScene, getTerrainMesh, setDisplacementMultiplier } from './3d/terrain.js';
+import { initTerrain, updateTerrainScene, getRaycastTargets } from './3d/terrain.js';
 import { toggleFlight, updateFlightLoop, getIsFlying } from './3d/cameraFlight.js';
+import {
+  initStreetNavigator,
+  enableStreetMode,
+  disableStreetMode,
+  updateStreetNavigator,
+  getIsStreetMode,
+  getStreetTelemetry
+} from './3d/streetNavigator.js';
 import { pickTerrainPixel } from './3d/picking.js';
 import { setupLayerControls } from './hud/layers.js';
 import { showInspectorBadge } from './hud/inspector.js';
@@ -13,8 +21,9 @@ import { DEFAULT_SCENE, createDynamicSceneFromImage } from './mockData.js';
 let scene, camera, renderer, controls;
 let activeSceneData = DEFAULT_SCENE;
 
-// FPS Counter
+// Frame & Performance Tracking
 let lastTime = performance.now();
+let lastFrameTime = performance.now();
 let frames = 0;
 const fpsEl = document.getElementById('hud-fps');
 
@@ -23,14 +32,14 @@ async function init() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
 
-  // 1. Scene & Camera
+  // 1. Three.js Scene & Perspective Camera
   scene = new THREE.Scene();
   scene.background = new THREE.Color('#050811');
 
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
   camera.position.set(0, 58, 62);
 
-  // 2. WebGL Renderer
+  // 2. High-Performance WebGL Renderer
   renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: true,
@@ -39,32 +48,48 @@ async function init() {
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  // 3. Orbit Controls
+  // 3. Orbit Controls (for Aerial Satellite Mode)
   controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.maxPolarAngle = Math.PI / 2.45; // ~73 degrees max tilt, preserves aerial geospatial perspective
+  controls.maxPolarAngle = Math.PI / 2.45; // ~73 degrees max tilt
   controls.minDistance = 15;
   controls.maxDistance = 220;
 
-  // 4. Terrain Mesh
+  // 4. Initialize Terrain (Flat ground + Volumetric 3D Buildings)
   initTerrain(scene);
 
-  // 5. Setup UI & Controls
+  // 5. Initialize First-Person WASD Street Navigation
+  initStreetNavigator(camera, controls, canvas, (isStreet) => {
+    updateNavigationModeUI(isStreet);
+  });
+
+  // 6. Setup UI Events & Layers
   setupLayerControls();
   setupUIEvents();
 
-  // 6. Load Initial Default Scene (DC_03_26)
+  // 7. Load Initial Verified GAMUS Benchmark Scene (DC_03_26)
   await loadScene(DEFAULT_SCENE);
 
-  // 7. Click raycasting for point inspection
+  // 8. Viewport Click Raycasting for Point Inspection
   canvas.addEventListener('click', handleViewportClick);
 
-  // 8. Resize Listener
+  // 9. Resize Listener
   window.addEventListener('resize', onWindowResize);
 
-  // 9. Start Render Loop
+  // 10. Start Render Loop
+  lastFrameTime = performance.now();
   requestAnimationFrame(renderLoop);
+}
+
+function updateNavigationModeUI(isStreet) {
+  const orbitBtn = document.getElementById('btn-mode-orbit');
+  const streetBtn = document.getElementById('btn-mode-street');
+  const streetHud = document.getElementById('street-hud');
+
+  if (orbitBtn) orbitBtn.classList.toggle('active', !isStreet);
+  if (streetBtn) streetBtn.classList.toggle('active', isStreet);
+  if (streetHud) streetHud.style.display = isStreet ? 'block' : 'none';
 }
 
 async function loadScene(sceneData) {
@@ -106,10 +131,11 @@ async function loadScene(sceneData) {
 }
 
 async function handleViewportClick(e) {
-  if (getIsFlying()) return;
+  // In street drive mode or drone flight, mouse interaction is for steering/looking
+  if (getIsFlying() || getIsStreetMode()) return;
 
   const canvas = document.getElementById('three-canvas');
-  const hit = pickTerrainPixel(e, camera, getTerrainMesh(), canvas);
+  const hit = pickTerrainPixel(e, camera, getRaycastTargets(), canvas);
   if (hit) {
     const inspectResult = await inspectPoint(activeSceneData.id, hit.pixel.x, hit.pixel.y);
     showInspectorBadge(inspectResult);
@@ -126,10 +152,32 @@ async function handleViewportClick(e) {
 }
 
 function setupUIEvents() {
-  // Drone Flight button
+  // Navigation Mode: Orbit (Satellite)
+  const modeOrbitBtn = document.getElementById('btn-mode-orbit');
+  if (modeOrbitBtn) {
+    modeOrbitBtn.addEventListener('click', () => {
+      disableStreetMode();
+      updateNavigationModeUI(false);
+    });
+  }
+
+  // Navigation Mode: Street (WASD)
+  const modeStreetBtn = document.getElementById('btn-mode-street');
+  if (modeStreetBtn) {
+    modeStreetBtn.addEventListener('click', () => {
+      enableStreetMode();
+      updateNavigationModeUI(true);
+    });
+  }
+
+  // Autonomous Drone Flight button
   const flightBtn = document.getElementById('btn-drone-flight');
   if (flightBtn) {
     flightBtn.addEventListener('click', () => {
+      if (getIsStreetMode()) {
+        disableStreetMode();
+        updateNavigationModeUI(false);
+      }
       toggleFlight(camera, controls, (isFlying) => {
         flightBtn.innerHTML = isFlying
           ? '<span>⏸</span> STOP FLIGHT'
@@ -145,20 +193,13 @@ function setupUIEvents() {
   const resetBtn = document.getElementById('btn-reset-cam');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
+      if (getIsStreetMode()) {
+        disableStreetMode();
+        updateNavigationModeUI(false);
+      }
       camera.position.set(0, 58, 62);
       controls.target.set(0, 0, 0);
       controls.update();
-    });
-  }
-
-  // 3D Height Relief Slider
-  const reliefSlider = document.getElementById('relief-slider');
-  const reliefVal = document.getElementById('relief-val');
-  if (reliefSlider) {
-    reliefSlider.addEventListener('input', (e) => {
-      const val = parseFloat(e.target.value);
-      if (reliefVal) reliefVal.innerText = `${val.toFixed(1)}x`;
-      setDisplacementMultiplier(val);
     });
   }
 
@@ -186,6 +227,10 @@ function setupUIEvents() {
   const resetDefaultBtn = document.getElementById('btn-reset-default-scene');
   if (resetDefaultBtn) {
     resetDefaultBtn.addEventListener('click', () => {
+      if (getIsStreetMode()) {
+        disableStreetMode();
+        updateNavigationModeUI(false);
+      }
       loadScene(DEFAULT_SCENE);
     });
   }
@@ -263,25 +308,27 @@ async function handleUploadedFile(file) {
     dropzone.innerHTML = `
       <div style="font-size: 20px;">⚙️ 🛰️</div>
       <div class="upload-text" style="color: #00FFA3; font-weight: 600;">Processing ${file.name}...</div>
-      <div class="upload-sub">Generating 3D elevation displacement...</div>
+      <div class="upload-sub">Extracting 3D urban architecture...</div>
     `;
   }
 
   try {
     let uploadedSceneData;
     try {
-      // 1. Send to FastAPI backend inference pipeline
       uploadedSceneData = await uploadTile(file);
-      console.log("[DepthWizard] Ingested tile from backend:", uploadedSceneData);
     } catch (apiErr) {
-      console.warn("[DepthWizard] Backend upload error, using local canvas fallback:", apiErr.message);
+      console.warn("[DepthWizard] Backend upload error, using local fallback:", apiErr.message);
       uploadedSceneData = await createDynamicSceneFromImage(file);
+    }
+
+    if (getIsStreetMode()) {
+      disableStreetMode();
+      updateNavigationModeUI(false);
     }
 
     await loadScene(uploadedSceneData);
 
-    // Reset camera target
-    camera.position.set(0, 70, 75);
+    camera.position.set(0, 58, 62);
     controls.target.set(0, 0, 0);
     controls.update();
 
@@ -321,6 +368,9 @@ function onWindowResize() {
 function renderLoop(time) {
   requestAnimationFrame(renderLoop);
 
+  const delta = Math.min((time - lastFrameTime) / 1000, 0.1);
+  lastFrameTime = time;
+
   // FPS calculation
   frames++;
   if (time > lastTime + 1000) {
@@ -331,7 +381,14 @@ function renderLoop(time) {
     frames = 0;
   }
 
-  if (getIsFlying()) {
+  // Active Controller
+  if (getIsStreetMode()) {
+    updateStreetNavigator(delta);
+    const speedEl = document.getElementById('street-speed');
+    if (speedEl) {
+      speedEl.innerText = getStreetTelemetry().speedKmH;
+    }
+  } else if (getIsFlying()) {
     updateFlightLoop(camera);
   } else {
     controls.update();
