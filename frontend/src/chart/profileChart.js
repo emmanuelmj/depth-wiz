@@ -8,47 +8,62 @@ export function renderElevationProfile(transectData) {
   if (!canvas || !drawer) return;
 
   const ctx = canvas.getContext('2d');
-  if (profileChart) {
-    profileChart.destroy();
-  }
+  if (profileChart) profileChart.destroy();
 
   const profile = transectData.profile || [];
   const labels = profile.map(p => `${Math.round(p.dist_m)}m`);
   const dataPoints = profile.map(p => p.elevation_m);
 
-  // Update header stats
   const distEl = document.getElementById('drawer-stat-dist');
   const minEl = document.getElementById('drawer-stat-min');
   const maxEl = document.getElementById('drawer-stat-max');
+  const titleEl = document.getElementById('drawer-title-text');
+  const aglEl = document.getElementById('drawer-stat-agl');
 
   if (distEl) distEl.innerText = `${transectData.distance_total_m} m`;
   if (minEl) minEl.innerText = `${transectData.min_elevation_m} m`;
   if (maxEl) maxEl.innerText = `${transectData.max_elevation_m} m`;
+  if (titleEl && transectData.scene_name) {
+    titleEl.innerHTML = `<span>📈 2D Profile: ${transectData.scene_name}</span>`;
+  }
+
+  const datasets = [{
+    label: 'Elevation (m ASL)',
+    data: dataPoints,
+    borderColor: '#00F2FE',
+    borderWidth: 2,
+    backgroundColor: 'rgba(0, 242, 254, 0.15)',
+    fill: true,
+    tension: 0.25,
+    pointRadius: 1,
+    pointHoverRadius: 4,
+    pointHoverBackgroundColor: '#00FFA3'
+  }];
+
+  if (transectData.ground_base_m !== undefined) {
+    if (aglEl) {
+      const maxAgl = (transectData.max_elevation_m - transectData.ground_base_m).toFixed(1);
+      aglEl.innerText = `${maxAgl} m`;
+    }
+    datasets.push({
+      label: 'Ground Level',
+      data: Array(profile.length).fill(transectData.ground_base_m),
+      borderColor: '#F59E0B',
+      borderDash: [4, 4],
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+      tension: 0
+    });
+  }
 
   profileChart = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Elevation (m ASL)',
-        data: dataPoints,
-        borderColor: '#00F2FE',
-        borderWidth: 2,
-        backgroundColor: 'rgba(0, 242, 254, 0.15)',
-        fill: true,
-        tension: 0.25,
-        pointRadius: 1,
-        pointHoverRadius: 4,
-        pointHoverBackgroundColor: '#00FFA3'
-      }]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: {
-        intersect: false,
-        mode: 'index'
-      },
+      interaction: { intersect: false, mode: 'index' },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -58,21 +73,15 @@ export function renderElevationProfile(transectData) {
           borderColor: 'rgba(255, 255, 255, 0.15)',
           borderWidth: 1,
           padding: 8,
-          displayColors: false,
+          displayColors: true,
           callbacks: {
-            label: (ctx) => `Elevation: ${ctx.parsed.y} m ASL`
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y} m`
           }
         }
       },
       scales: {
-        x: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: { color: '#64748B', maxTicksLimit: 12, font: { family: 'JetBrains Mono', size: 10 } }
-        },
-        y: {
-          grid: { color: 'rgba(255, 255, 255, 0.08)' },
-          ticks: { color: '#94A3B8', font: { family: 'JetBrains Mono', size: 10 } }
-        }
+        x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#64748B', maxTicksLimit: 12, font: { family: 'JetBrains Mono', size: 10 } } },
+        y: { grid: { color: 'rgba(255, 255, 255, 0.08)' }, ticks: { color: '#94A3B8', font: { family: 'JetBrains Mono', size: 10 } } }
       }
     }
   });

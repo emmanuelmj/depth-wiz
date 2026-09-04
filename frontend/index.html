@@ -9,11 +9,19 @@
 </head>
 <body>
   <div id="app-container">
+    
+    <!-- LOADING OVERLAY -->
+    <div id="scene-loader" class="scene-loader">
+      <div class="spinner"></div>
+      <div>⟳ Activating Terrain Pipeline...</div>
+    </div>
+
     <!-- TOP COMMAND BAR -->
     <header class="top-bar">
       <div class="brand-section">
         <span class="isro-badge">ISRO · SAC</span>
-        <h1 class="app-title">DEPTHWIZARD</h1>
+        <div class="pulse-dot"></div>
+        <h1 class="app-title" style="margin-left: 8px;">DEPTHWIZARD</h1>
         <span class="app-subtitle">PS-26175 // V1.0</span>
       </div>
 
@@ -21,27 +29,25 @@
       <div class="telemetry-strip">
         <div class="telemetry-item">
           <span class="telemetry-label">COORD:</span>
-          <span class="telemetry-value" id="hud-coord">23.0225° N, 72.5714° E</span>
+          <span class="telemetry-value" id="hud-coord">—</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">ELEV (ASL):</span>
-          <span class="telemetry-value" id="hud-elev">184.2 m</span>
+          <span class="telemetry-value" id="hud-elev">—</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">AGL:</span>
-          <span class="telemetry-value val-emerald" id="hud-agl">54.6 m</span>
+          <span class="telemetry-value val-emerald" id="hud-agl">—</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">FPS:</span>
-          <span class="telemetry-value fps-counter" id="hud-fps">60</span>
+          <span class="telemetry-value fps-counter" id="hud-fps">0</span>
         </div>
       </div>
 
       <!-- TOP ACTIONS -->
       <div class="top-actions">
-        <button id="btn-open-benchmarks" class="btn-secondary">
-          📊 Benchmarks
-        </button>
+        <button id="btn-open-benchmarks" class="btn-secondary">📊 Benchmarks</button>
       </div>
     </header>
 
@@ -51,8 +57,13 @@
       <aside class="sidebar-panel">
         <div>
           <div class="section-title">Benchmark Presets</div>
-          <div id="presets-container" class="presets-grid">
-            <!-- Populated via presets.js -->
+          <div id="presets-container" class="presets-grid"></div>
+        </div>
+
+        <div>
+          <div class="section-title">Scene Telemetry</div>
+          <div id="scene-stats-panel" class="stats-panel">
+            <div style="color: #64748B; padding: 10px; text-align: center;">Select a scene...</div>
           </div>
         </div>
 
@@ -94,27 +105,35 @@
       <main class="viewport-center">
         <canvas id="three-canvas"></canvas>
 
-        <!-- VIEWPORT OVERLAY CONTROLS -->
         <div class="viewport-overlay-controls">
           <button id="btn-reset-cam" class="hud-btn">🎯 Reset View</button>
         </div>
 
-        <!-- FLOATING POINT INSPECTION BADGE -->
-        <div id="inspector-badge" class="inspector-badge">
-          <!-- Populated via inspector.js -->
+        <!-- FLIGHT CONTROL HINT BAR -->
+        <div id="flight-hint" class="flight-hint" style="display:none;">
+          <span class="hint-key">↑</span> Forward
+          <span class="hint-key">↓</span> Back
+          <span class="hint-key">← →</span> Turn
+          <span class="hint-key">Space</span> Up
+          <span class="hint-key">Ctrl</span> Down
+          <span class="hint-key">Q / E</span> Pitch
+          <span style="margin-left:12px;opacity:0.5;">Click ⏸ to exit</span>
         </div>
+
+        <div id="inspector-badge" class="inspector-badge"></div>
       </main>
 
       <!-- SLIDE-UP 2D TRANSECT PROFILE DRAWER -->
       <div id="transectDrawer" class="transect-drawer">
         <div class="drawer-header">
-          <div class="drawer-title">
+          <div class="drawer-title" id="drawer-title-text">
             <span>📈 2D Elevation Profile Transect</span>
           </div>
           <div class="drawer-controls">
             <div class="drawer-stat">Length: <span id="drawer-stat-dist">0 m</span></div>
             <div class="drawer-stat">Min: <span id="drawer-stat-min">0 m</span></div>
             <div class="drawer-stat">Max: <span id="drawer-stat-max">0 m</span></div>
+            <div class="drawer-stat" style="color: #00FFA3">Max AGL: <span id="drawer-stat-agl" style="color: #00FFA3">0 m</span></div>
             <button id="btn-close-drawer" class="drawer-close">&times;</button>
           </div>
         </div>
@@ -144,9 +163,7 @@
                 <th>Pearson r</th>
               </tr>
             </thead>
-            <tbody id="benchmark-tbody">
-              <!-- Populated dynamically -->
-            </tbody>
+            <tbody id="benchmark-tbody"></tbody>
           </table>
           <div style="margin-top: 14px; font-size: 11px; color: #64748B; font-family: monospace;">
             * Evaluated against Copernicus DEM GLO-30 / SRTM 30m ground-truth rasters.

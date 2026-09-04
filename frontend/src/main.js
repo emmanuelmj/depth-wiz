@@ -14,7 +14,6 @@ let scene, camera, renderer, controls;
 let currentSceneId = 'urban-ahmedabad-01';
 let availableScenes = [];
 
-// FPS Counter
 let lastTime = performance.now();
 let frames = 0;
 const fpsEl = document.getElementById('hud-fps');
@@ -24,14 +23,12 @@ async function init() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
 
-  // 1. Scene & Camera
   scene = new THREE.Scene();
   scene.background = new THREE.Color('#050811');
 
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
   camera.position.set(0, 70, 75);
 
-  // 2. WebGL Renderer
   renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: true,
@@ -40,44 +37,39 @@ async function init() {
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  // 3. Orbit Controls
   controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.maxPolarAngle = Math.PI / 2.05; // Prevent camera dipping below earth
+  controls.maxPolarAngle = Math.PI / 2.05;
   controls.minDistance = 5;
   controls.maxDistance = 250;
 
-  // 4. Terrain Mesh
   initTerrain(scene);
-
-  // 5. Setup UI & Controls
   setupLayerControls();
   setupUIEvents();
 
-  // 6. Fetch Scenes and load initial preset
   availableScenes = await fetchScenes();
   const presetsContainer = document.getElementById('presets-container');
   renderPresets(presetsContainer, availableScenes, currentSceneId, loadScene);
 
   await loadScene(currentSceneId);
 
-  // 7. Click raycasting for point inspection
   canvas.addEventListener('click', handleViewportClick);
-
-  // 8. Resize Listener
   window.addEventListener('resize', onWindowResize);
 
-  // 9. Start Render Loop
   requestAnimationFrame(renderLoop);
 }
 
 async function loadScene(sceneId) {
   currentSceneId = sceneId;
-  const sceneData = await fetchSceneDetails(sceneId);
-  updateTerrainScene(sceneData);
+  const loader = document.getElementById('scene-loader');
+  if (loader) loader.classList.add('visible');
 
-  // Update HUD telemetry
+  const sceneData = await fetchSceneDetails(sceneId);
+  await updateTerrainScene(sceneData);
+
+  if (loader) loader.classList.remove('visible');
+
   const coordEl = document.getElementById('hud-coord');
   const elevEl = document.getElementById('hud-elev');
   const aglEl = document.getElementById('hud-agl');
@@ -86,6 +78,7 @@ async function loadScene(sceneId) {
     const midLat = ((sceneData.bounds.min_lat + sceneData.bounds.max_lat) / 2).toFixed(4);
     const midLon = ((sceneData.bounds.min_lon + sceneData.bounds.max_lon) / 2).toFixed(4);
     coordEl.innerText = `${midLat}° N, ${midLon}° E`;
+    coordEl.classList.add('val-cyan');
   }
   if (elevEl && sceneData.elevation_stats) {
     elevEl.innerText = `${sceneData.elevation_stats.max_m} m`;
@@ -93,6 +86,17 @@ async function loadScene(sceneId) {
   if (aglEl && sceneData.elevation_stats) {
     const aglEst = (sceneData.elevation_stats.max_m - sceneData.elevation_stats.ground_base_m).toFixed(1);
     aglEl.innerText = `${aglEst} m`;
+  }
+
+  const statsPanel = document.getElementById('scene-stats-panel');
+  if (statsPanel && sceneData.elevation_stats) {
+    statsPanel.innerHTML = `
+      <div class="stat-row"><span class="stat-label">Ground Base</span><span class="stat-value">${sceneData.elevation_stats.ground_base_m} m</span></div>
+      <div class="stat-row"><span class="stat-label">Max AGL (GT)</span><span class="stat-value">${sceneData.elevation_stats.max_building_agl_m} m</span></div>
+      <div class="stat-row"><span class="stat-label">Max AGL (Pred)</span><span class="stat-value">${sceneData.elevation_stats.predicted_building_agl_m} m</span></div>
+      <div class="stat-row"><span class="stat-label">Accuracy</span><span class="stat-value val-emerald">${sceneData.elevation_stats.accuracy_percentage}%</span></div>
+      <div class="stat-row"><span class="stat-label">CRS</span><span class="stat-value">${sceneData.crs || 'EPSG:32643'}</span></div>
+    `;
   }
 }
 
@@ -105,7 +109,6 @@ async function handleViewportClick(e) {
     const inspectResult = await inspectPoint(currentSceneId, hit.pixel.x, hit.pixel.y);
     showInspectorBadge(inspectResult);
 
-    // Update top telemetry
     const coordEl = document.getElementById('hud-coord');
     const elevEl = document.getElementById('hud-elev');
     const aglEl = document.getElementById('hud-agl');
@@ -117,7 +120,6 @@ async function handleViewportClick(e) {
 }
 
 function setupUIEvents() {
-  // Drone Flight button
   const flightBtn = document.getElementById('btn-drone-flight');
   if (flightBtn) {
     flightBtn.addEventListener('click', () => {
@@ -132,7 +134,6 @@ function setupUIEvents() {
     });
   }
 
-  // Camera Reset
   const resetBtn = document.getElementById('btn-reset-cam');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -142,27 +143,20 @@ function setupUIEvents() {
     });
   }
 
-  // Sample 2D Cross-Section Transect Button
   const transectBtn = document.getElementById('btn-sample-transect');
   if (transectBtn) {
     transectBtn.addEventListener('click', async () => {
-      const transectData = await fetchTransect(
-        currentSceneId,
-        { x: 120, y: 200 },
-        { x: 900, y: 820 },
-        120
-      );
+      const transectData = await fetchTransect(currentSceneId, { x: 120, y: 200 }, { x: 900, y: 820 }, 120);
+      const sceneData = await fetchSceneDetails(currentSceneId);
+      transectData.scene_name = sceneData.name;
+      transectData.ground_base_m = sceneData.elevation_stats?.ground_base_m || 0;
       renderElevationProfile(transectData);
     });
   }
 
-  // Drawer Close Button
   const closeDrawerBtn = document.getElementById('btn-close-drawer');
-  if (closeDrawerBtn) {
-    closeDrawerBtn.addEventListener('click', closeTransectDrawer);
-  }
+  if (closeDrawerBtn) closeDrawerBtn.addEventListener('click', closeTransectDrawer);
 
-  // Benchmarks Modal
   const openModalBtn = document.getElementById('btn-open-benchmarks');
   const closeModalBtn = document.getElementById('btn-close-modal');
   const modal = document.getElementById('benchmarkModal');
@@ -192,19 +186,6 @@ function setupUIEvents() {
       if (e.target === modal) modal.classList.remove('open');
     });
   }
-
-  // Upload Box
-  const dropzone = document.getElementById('upload-dropzone');
-  const fileInput = document.getElementById('file-input');
-  if (dropzone && fileInput) {
-    dropzone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', async (e) => {
-      if (e.target.files.length > 0) {
-        const file = e.target.files[0];
-        alert(`Selected tile "${file.name}". Ready for processing pipeline.`);
-      }
-    });
-  }
 }
 
 function onWindowResize() {
@@ -220,12 +201,9 @@ function onWindowResize() {
 function renderLoop(time) {
   requestAnimationFrame(renderLoop);
 
-  // FPS calculation
   frames++;
   if (time > lastTime + 1000) {
-    if (fpsEl) {
-      fpsEl.innerText = Math.round((frames * 1000) / (time - lastTime));
-    }
+    if (fpsEl) fpsEl.innerText = Math.round((frames * 1000) / (time - lastTime));
     lastTime = time;
     frames = 0;
   }

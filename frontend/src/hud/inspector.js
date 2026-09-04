@@ -31,6 +31,10 @@ export function showInspectorBadge(data) {
         <div class="inspector-metric-label">Pixel (X, Y)</div>
         <div class="inspector-metric-value">${pixel}</div>
       </div>
+      <div>
+        <div class="inspector-metric-label">Slope</div>
+        <div class="inspector-metric-value" style="color: #F59E0B;">${slope}</div>
+      </div>
     </div>
   `;
 
