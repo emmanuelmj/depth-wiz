@@ -32,6 +32,11 @@ frontend/dist/
 *.npz
 *.las
 *.laz
+*.pth
+*.pt
+*.onnx
+*.bin
+checkpoints/*.pth
 data/optical/
 data/dsm/
 data/cache/
