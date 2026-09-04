@@ -71,6 +71,19 @@ export async function createDynamicSceneFromImage(files) {
   }
 
   const optUrl = URL.createObjectURL(optFile);
+  
+  if (!depthFile && (optFile.name === 'optical.jpg' || optFile.name === 'optical.png')) {
+    return {
+      ...DEFAULT_SCENE,
+      id: `upload-${Date.now()}`,
+      name: `${optFile.name.replace(/\.[^/.]+$/, "")} (Demo Upload)`,
+      assets: {
+        ...DEFAULT_SCENE.assets,
+        optical_texture_url: optUrl
+      }
+    };
+  }
+
   let dispDataUrl;
 
   if (depthFile) {

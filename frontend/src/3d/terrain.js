@@ -1,22 +1,24 @@
 import * as THREE from 'three';
 
 let terrainGroup = null;
-let buildingMesh = null;
-let groundMesh = null;
 let currentMode = 'optical';
 let currentOpticalTex = null;
-
 let baseScale = 25;
 
 export function initTerrain(scene) {
   terrainGroup = new THREE.Group();
   scene.add(terrainGroup);
 
-  // Soft ambient lighting, crisp sun
+  // Soft ambient lighting, crisp sun for architectural shadows
   scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const sun = new THREE.DirectionalLight(0xfffdf0, 1.2);
-  sun.position.set(60, 100, 40);
+  const sun = new THREE.DirectionalLight(0xfffdf0, 1.5);
+  sun.position.set(60, 120, 40);
+  sun.castShadow = true;
   scene.add(sun);
+  
+  const fill = new THREE.DirectionalLight(0xc8d8ff, 0.3);
+  fill.position.set(-30, 20, -30);
+  scene.add(fill);
   
   return terrainGroup;
 }
@@ -29,7 +31,10 @@ export async function updateTerrainScene(sceneData) {
     const child = terrainGroup.children[0];
     terrainGroup.remove(child);
     if (child.geometry) child.geometry.dispose();
-    if (child.material) child.material.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+      else child.material.dispose();
+    }
   }
 
   const { optImg, hgtImg } = await loadImages(
@@ -41,153 +46,149 @@ export async function updateTerrainScene(sceneData) {
 
   currentOpticalTex = new THREE.CanvasTexture(optImg);
   currentOpticalTex.colorSpace = THREE.SRGBColorSpace;
-  // High quality texture mapping
-  currentOpticalTex.anisotropy = 16; 
+  currentOpticalTex.anisotropy = 16;
 
   const range = (sceneData.elevation_stats?.max_m || 100) - (sceneData.elevation_stats?.min_m || 0);
   baseScale = THREE.MathUtils.clamp(600 / Math.max(10, range), 10, 40);
 
-  buildExtrudedCity(optImg, hgtImg);
-  setTerrainLayer(currentMode);
+  buildArchitecturalCity(optImg, hgtImg);
 }
 
-// ─── EXACT 2.5D EXTRUSION ENGINE ──────────────────────────────────────────────
-// This guarantees perfect 1:1 photographic top-down view, with crisp vertical walls.
-function buildExtrudedCity(optImg, hgtImg) {
+// ─── SMOOTH DISPLACEMENT WITH SLOPE-BASED MATERIALS ──────────────────────────
+function buildArchitecturalCity(optImg, hgtImg) {
   const gridSize = 256; 
-  const cellSize = 100 / gridSize;
-
+  
   const hgtCanvas = document.createElement('canvas');
   hgtCanvas.width = hgtCanvas.height = gridSize;
   const hgtCtx = hgtCanvas.getContext('2d', { willReadFrequently: true });
   hgtCtx.drawImage(hgtImg, 0, 0, gridSize, gridSize);
   const hgtData = hgtCtx.getImageData(0, 0, gridSize, gridSize).data;
 
-  // 1. PERFECTLY FLAT GROUND PLANE (Fixes elevated roads)
-  const groundGeo = new THREE.PlaneGeometry(100, 100);
-  const groundMat = new THREE.MeshStandardMaterial({ 
-    map: currentOpticalTex, roughness: 0.9, metalness: 0.1 
-  });
-  groundMesh = new THREE.Mesh(groundGeo, groundMat);
-  groundMesh.rotation.x = -Math.PI / 2;
-  // Push ground down a tiny bit to prevent z-fighting with flat cells
-  groundMesh.position.y = -0.05;
-  terrainGroup.add(groundMesh);
+  const threshold = 0.15; 
 
-  // 2. CUSTOM BUFFER GEOMETRY FOR CRISP BUILDINGS
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-  let vOff = 0;
+  // 1. Create a dense continuous plane
+  const segments = gridSize - 1;
+  const geom = new THREE.PlaneGeometry(100, 100, segments, segments);
+  geom.rotateX(-Math.PI / 2); // Orient so Y is up
 
-  function pushQuad(p0, p1, p2, p3, uv0, uv1, uv2, uv3) {
-    positions.push(...p0, ...p1, ...p2, ...p3);
-    uvs.push(...uv0, ...uv1, ...uv2, ...uv3);
-    indices.push(
-      vOff, vOff+2, vOff+1,
-      vOff+1, vOff+2, vOff+3
-    );
-    vOff += 4;
+  const pos = geom.attributes.position;
+  
+  // 2. Displace vertices smoothly
+  for (let i = 0; i < pos.count; i++) {
+    // PlaneGeometry vertices go row by row
+    const px = i % gridSize;
+    const py = Math.floor(i / gridSize);
+    
+    let hNorm = hgtData[(py * gridSize + px) * 4] / 255.0;
+    if (hNorm < threshold) hNorm = 0; // Flatten roads and noise
+    
+    pos.setY(i, hNorm * baseScale);
   }
+  
+  geom.computeVertexNormals();
 
-  // Threshold: anything darker than 12% grey is considered completely flat (roads)
-  const HEIGHT_THRESHOLD = 0.12; 
+  // 3. Assign Materials based on Slope (Face Normals)
+  const indices = geom.getIndex().array;
+  geom.clearGroups(); // Clear default groups
+  
+  const roofIndices = [];
+  const wallIndices = [];
+  
+  const vA = new THREE.Vector3();
+  const vB = new THREE.Vector3();
+  const vC = new THREE.Vector3();
+  const cb = new THREE.Vector3();
+  const ab = new THREE.Vector3();
 
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      const hNorm = hgtData[(y * gridSize + x) * 4] / 255.0;
-      
-      // Flatten roads
-      if (hNorm < HEIGHT_THRESHOLD) continue; 
-      
-      const h = hNorm * baseScale; 
-      
-      const wx = -50 + x * cellSize; 
-      const wz = -50 + y * cellSize; 
-      const w = cellSize;
-      const d = cellSize;
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i];
+    const b = indices[i+1];
+    const c = indices[i+2];
 
-      const t0 = [wx, h, wz];
-      const t1 = [wx + w, h, wz];
-      const t2 = [wx, h, wz + d];
-      const t3 = [wx + w, h, wz + d];
+    vA.fromBufferAttribute(pos, a);
+    vB.fromBufferAttribute(pos, b);
+    vC.fromBufferAttribute(pos, c);
 
-      const b0 = [wx, 0, wz];
-      const b1 = [wx + w, 0, wz];
-      const b2 = [wx, 0, wz + d];
-      const b3 = [wx + w, 0, wz + d];
+    cb.subVectors(vC, vB);
+    ab.subVectors(vA, vB);
+    cb.cross(ab);
+    cb.normalize(); 
 
-      // Exact UVs for the top face to perfectly match the photographic image
-      const u0 = x / gridSize;
-      const v0 = 1.0 - (y / gridSize);
-      const u1 = (x + 1) / gridSize;
-      const v1 = 1.0 - (y + 1) / gridSize;
-
-      const uvT0 = [u0, v0];
-      const uvT1 = [u1, v0];
-      const uvT2 = [u0, v1];
-      const uvT3 = [u1, v1];
-
-      // Walls are solidly colored based on the roof's center pixel
-      const uc = (u0 + u1) / 2;
-      const vc = (v0 + v1) / 2;
-      const uvC = [uc, vc];
-
-      // Top roof
-      pushQuad(t0, t1, t2, t3, uvT0, uvT1, uvT2, uvT3);
-
-      // Vertical walls
-      pushQuad(b2, b3, t2, t3, uvC, uvC, uvC, uvC); // Front
-      pushQuad(b1, b0, t1, t0, uvC, uvC, uvC, uvC); // Back
-      pushQuad(b0, b2, t0, t2, uvC, uvC, uvC, uvC); // Left
-      pushQuad(b3, b1, t3, t1, uvC, uvC, uvC, uvC); // Right
+    // cb.y is the vertical component of the face normal.
+    // > 0.6 means the face is mostly flat (roof or road).
+    // <= 0.6 means the face is steep (a vertical wall).
+    if (cb.y > 0.6) {
+      roofIndices.push(a, b, c);
+    } else {
+      wallIndices.push(a, b, c);
     }
   }
 
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geom.setIndex(indices);
-  geom.computeVertexNormals();
+  // Reconstruct the index buffer to group them for the multi-material array
+  const newIndices = new Uint32Array(roofIndices.length + wallIndices.length);
+  newIndices.set(roofIndices, 0);
+  newIndices.set(wallIndices, roofIndices.length);
+  geom.setIndex(new THREE.BufferAttribute(newIndices, 1));
+  
+  geom.addGroup(0, roofIndices.length, 0); // Material 0: Roofs
+  geom.addGroup(roofIndices.length, wallIndices.length, 1); // Material 1: Walls
 
-  // DoubleSide ensures walls are visible regardless of quad winding order
-  const bMat = new THREE.MeshStandardMaterial({ 
-    map: currentOpticalTex, 
-    roughness: 0.9, 
-    metalness: 0.0,
-    side: THREE.DoubleSide
-  });
+  // 4. Create Mesh
+  const materials = [
+    new THREE.MeshStandardMaterial({ map: currentOpticalTex, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ 
+      color: 0x8a9096, // Clean architectural grey
+      roughness: 0.8, 
+      flatShading: true // Gives crisp facets to the walls
+    }) 
+  ];
 
-  buildingMesh = new THREE.Mesh(geom, bMat);
-  terrainGroup.add(buildingMesh);
+  const mesh = new THREE.Mesh(geom, materials);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  
+  // Lower it slightly so roads rest exactly on 0
+  mesh.position.y = -0.01;
+  terrainGroup.add(mesh);
 }
 
 export function setTerrainLayer(mode) {
-  if (!terrainGroup) return;
   currentMode = mode;
+  if (!terrainGroup) return;
 
   const isWire = mode === 'wireframe';
-  if (groundMesh) groundMesh.material.wireframe = isWire;
-  if (buildingMesh) buildingMesh.material.wireframe = isWire;
+  
+  terrainGroup.children.forEach(child => {
+    if (child.isMesh) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach(m => m.wireframe = isWire);
+      } else {
+        child.material.wireframe = isWire;
+      }
 
-  if (mode === 'heatmap') {
-    // Heatmap mode fallback
-    if (groundMesh) groundMesh.material.color.setHex(0x222222);
-    if (buildingMesh) buildingMesh.material.color.setHex(0xff5500);
-  } else {
-    if (groundMesh) groundMesh.material.color.setHex(0xffffff);
-    if (buildingMesh) buildingMesh.material.color.setHex(0xffffff);
-  }
+      if (mode === 'heatmap') {
+        if (Array.isArray(child.material)) {
+           child.material.forEach(m => m.color?.setHex(0xff5500));
+        } else {
+           child.material.color?.setHex(0x222222);
+        }
+      } else {
+        if (Array.isArray(child.material)) {
+           // Material 1 is walls, Material 0 is roof
+           if (child.material[1]) child.material[1].color?.setHex(0xdcdcdc); 
+           if (child.material[0]) child.material[0].color?.setHex(0xffffff); 
+        } else {
+           child.material.color?.setHex(0xffffff);
+        }
+      }
+    }
+  });
 }
 
 export function getTerrainMesh() { return terrainGroup; }
 
-// ─── IMAGE LOADING ────────────────────────────────────────────────────────────
 async function loadImages(optUrl, hgtUrl) {
-  const [optImg, hgtImg] = await Promise.all([
-    loadImage(optUrl),
-    loadImage(hgtUrl)
-  ]);
+  const [optImg, hgtImg] = await Promise.all([loadImage(optUrl), loadImage(hgtUrl)]);
   return { optImg, hgtImg };
 }
 
