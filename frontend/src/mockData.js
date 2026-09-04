@@ -5,6 +5,7 @@ export const DEFAULT_SCENE = {
   id: "dc-03-26",
   name: "Urban Core (Tile DC_03_26)",
   landscape_type: "urban",
+  city_builder_mode: true,       // ← activates 2D city-builder HUD overlay
   is_georeferenced: true,
   thumbnail_url: "/demo_data/dc-03-26/optical.jpg",
   min_elevation_m: 45.0,
@@ -72,11 +73,13 @@ export async function createDynamicSceneFromImage(files) {
 
   const optUrl = URL.createObjectURL(optFile);
   
-  if (!depthFile && (optFile.name === 'optical.jpg' || optFile.name === 'optical.png')) {
+  const isCityMap = /^optical\.(jpe?g|png)$/i.test(optFile.name);
+  if (!depthFile && isCityMap) {
     return {
       ...DEFAULT_SCENE,
       id: `upload-${Date.now()}`,
       name: `${optFile.name.replace(/\.[^/.]+$/, "")} (Demo Upload)`,
+      city_builder_mode: true,   // ← activate 2D HUD for optical uploads
       assets: {
         ...DEFAULT_SCENE.assets,
         optical_texture_url: optUrl
