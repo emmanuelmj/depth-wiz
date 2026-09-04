@@ -6,7 +6,7 @@ export const DEFAULT_SCENE = {
   name: "Urban Core (Tile DC_03_26)",
   landscape_type: "urban",
   is_georeferenced: true,
-  thumbnail_url: "/static/thumbnails/urban.jpg",
+  thumbnail_url: "/demo_data/dc-03-26/optical.jpg",
   min_elevation_m: 45.0,
   max_elevation_m: 87.6,
   crs: "EPSG:32643",
@@ -21,9 +21,9 @@ export const DEFAULT_SCENE = {
     accuracy_percentage: 90.4
   },
   assets: {
-    optical_texture_url: "/static/demo_data/dc-03-26/optical.png",
-    height_map_url: "/static/demo_data/dc-03-26/disp_16bit.png",
-    geotiff_download_url: "/static/demo_data/dc-03-26/dsm_metric.tif"
+    optical_texture_url: "/demo_data/dc-03-26/optical.jpg",
+    height_map_url: "/demo_data/dc-03-26/disp_16bit.png",
+    geotiff_download_url: "/demo_data/dc-03-26/optical.jpg"
   }
 };
 
@@ -50,50 +50,55 @@ export const MOCK_BENCHMARKS = {
 };
 
 // Generates dynamic 3D terrain data on-the-fly for any uploaded satellite image (mountain, plain, etc.)
-export async function createDynamicSceneFromImage(file) {
-  const objectUrl = URL.createObjectURL(file);
-  const img = new Image();
-  img.src = objectUrl;
-  await new Promise((resolve) => { img.onload = resolve; });
-
-  const width = img.width || 1024;
-  const height = img.height || 1024;
-
-  // Generate real-time displacement height texture using client-side canvas
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, 512, 512);
-
-  const imgData = ctx.getImageData(0, 0, 512, 512);
-  const data = imgData.data;
-
-  // Convert RGB luminosity to inverted nadir depth
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    // Invert so high-contrast features / structures pop upwards
-    const h = Math.min(255, Math.max(10, Math.round(255 - lum * 0.8)));
-    data[i] = h;
-    data[i + 1] = h;
-    data[i + 2] = h;
+export async function createDynamicSceneFromImage(files) {
+  let optFile, depthFile;
+  
+  if (files.length === 2) {
+    const isDepth = (f) => /(depth|disp|height|elev|dsm|dem)/i.test(f.name);
+    if (isDepth(files[0])) {
+      depthFile = files[0]; optFile = files[1];
+    } else if (isDepth(files[1])) {
+      depthFile = files[1]; optFile = files[0];
+    } else if (files[0].name.toLowerCase().endsWith('.png') && files[1].name.toLowerCase().endsWith('.jpg')) {
+      depthFile = files[0]; optFile = files[1];
+    } else if (files[1].name.toLowerCase().endsWith('.png') && files[0].name.toLowerCase().endsWith('.jpg')) {
+      depthFile = files[1]; optFile = files[0];
+    } else {
+      depthFile = files[1]; optFile = files[0]; // fallback
+    }
+  } else {
+    optFile = files[0];
   }
-  ctx.putImageData(imgData, 0, 0);
-  const dispDataUrl = canvas.toDataURL('image/png');
 
-  const cleanName = file.name.replace(/\.[^/.]+$/, "");
+  const optUrl = URL.createObjectURL(optFile);
+  let dispDataUrl;
+
+  if (depthFile) {
+    dispDataUrl = URL.createObjectURL(depthFile);
+  } else {
+    // Generate a flat/subtle depth map so we don't wildly extrude roads or dark pixels
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#808080'; // Flat mid-grey
+    ctx.fillRect(0, 0, 512, 512);
+    dispDataUrl = canvas.toDataURL('image/png');
+  }
+
+  const cleanName = optFile.name.replace(/\.[^/.]+$/, "");
   const isMountain = cleanName.toLowerCase().includes("mount") || cleanName.toLowerCase().includes("hill");
-  const minM = isMountain ? 1200.0 : 50.0;
-  const maxM = isMountain ? 2800.0 : 160.0;
+  
+  // If they provided a real depth map, we can assume typical suburban bounds. 
+  // If they didn't, use generic bounds.
+  const minM = isMountain ? 1200.0 : (depthFile ? 40.0 : 10.0);
+  const maxM = isMountain ? 2800.0 : (depthFile ? 100.0 : 10.0); // Flat if no depth file
 
   return {
     id: `upload-${Date.now()}`,
     name: `${cleanName} (Live Upload)`,
     landscape_type: isMountain ? "mountain" : "custom",
-    is_georeferenced: file.name.endsWith('.tif') || file.name.endsWith('.tiff'),
+    is_georeferenced: optFile.name.endsWith('.tif') || optFile.name.endsWith('.tiff'),
     min_elevation_m: minM,
     max_elevation_m: maxM,
     bounds: { min_lon: 72.5000, min_lat: 23.0000, max_lon: 72.5500, max_lat: 23.0500 },
@@ -107,9 +112,9 @@ export async function createDynamicSceneFromImage(file) {
       accuracy_percentage: 91.5
     },
     assets: {
-      optical_texture_url: objectUrl,
+      optical_texture_url: optUrl,
       height_map_url: dispDataUrl,
-      geotiff_download_url: objectUrl
+      geotiff_download_url: optUrl
     }
   };
 }

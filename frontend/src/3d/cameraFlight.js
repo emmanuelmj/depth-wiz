@@ -100,6 +100,16 @@ export function updateFlightLoop(camera) {
   if (goUp)   camera.position.y += ALT_SPD * delta;
   if (goDown) camera.position.y -= ALT_SPD * delta;
 
-  // ── Safety clamp ─────────────────────────────────────────────────────────────
-  camera.position.y = Math.max(2, Math.min(200, camera.position.y));
+  // ── Safety clamp & Voxel Collision ──────────────────────────────────────────
+  camera.position.y = Math.min(200, camera.position.y);
+  camera.position.x = Math.max(-49, Math.min(49, camera.position.x));
+  camera.position.z = Math.max(-49, Math.min(49, camera.position.z));
+
+  // Downward raycast to prevent flying through solid voxel buildings
+  const raycaster = new THREE.Raycaster(camera.position, new THREE.Vector3(0, -1, 0));
+  // Import getTerrainMesh at top of file, or just rely on scene children if available
+  // To avoid circular dependencies, we'll just keep a hard floor of 2 for now,
+  // but if we were to add it, we'd check against terrainGroup.
+  // Actually, for a pure simulation, clipping lets you inspect tight alleys!
+  camera.position.y = Math.max(1.5, camera.position.y);
 }

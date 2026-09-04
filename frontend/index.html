@@ -9,11 +9,11 @@
 </head>
 <body>
   <div id="app-container">
-    
+
     <!-- LOADING OVERLAY -->
     <div id="scene-loader" class="scene-loader">
       <div class="spinner"></div>
-      <div>⟳ Activating Terrain Pipeline...</div>
+      <div>⟳ Generating 3D Terrain...</div>
     </div>
 
     <!-- TOP COMMAND BAR -->
@@ -25,19 +25,18 @@
         <span class="app-subtitle">PS-26175 // V1.0</span>
       </div>
 
-      <!-- TELEMETRY HUD STRIP -->
       <div class="telemetry-strip">
         <div class="telemetry-item">
           <span class="telemetry-label">COORD:</span>
-          <span class="telemetry-value" id="hud-coord">—</span>
+          <span class="telemetry-value val-cyan" id="hud-coord">—</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">ELEV (ASL):</span>
-          <span class="telemetry-value" id="hud-elev">87.6 m</span>
+          <span class="telemetry-value" id="hud-elev">—</span>
         </div>
         <div class="telemetry-item">
-          <span class="telemetry-label">AGL (MAX):</span>
-          <span class="telemetry-value val-emerald" id="hud-agl">42.6 m</span>
+          <span class="telemetry-label">AGL:</span>
+          <span class="telemetry-value val-emerald" id="hud-agl">—</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">FPS:</span>
@@ -45,7 +44,6 @@
         </div>
       </div>
 
-      <!-- TOP ACTIONS -->
       <div class="top-actions">
         <button id="btn-open-benchmarks" class="btn-secondary">📊 Benchmarks</button>
       </div>
@@ -53,41 +51,51 @@
 
     <!-- MAIN VIEWPORT -->
     <div class="viewport-body">
+
       <!-- LEFT SIDEBAR -->
       <aside class="sidebar-panel">
-        <!-- 1. SATELLITE IMAGE UPLOAD HUB -->
+
+        <!-- ① SATELLITE IMAGE INGESTION (Hero Feature) -->
         <div>
           <div class="section-title">Satellite Image Ingestion</div>
-          <div id="upload-dropzone" class="upload-dropzone">
-            <div style="font-size: 24px;">🛰️ 📤</div>
-            <div class="upload-text" style="font-weight: 600; color: #FFFFFF; margin-top: 6px;">
-              Upload Satellite Imagery
-            </div>
-            <div class="upload-sub" style="margin-top: 4px;">
-              Drag & drop any Mountain, Plain, or City tile (.PNG, .JPG, .TIF)
-            </div>
-            <input type="file" id="file-input" style="display: none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5">
+          <div id="upload-dropzone" class="upload-dropzone upload-dropzone-hero">
+            <div class="upload-icon-row">🛰️ &nbsp; 📤</div>
+            <div class="upload-hero-title">Drop Any Satellite Tile</div>
+            <div class="upload-sub">Drop 1 image (Optical) or 2 images (Optical + Depth Map)</div>
+            <input type="file" id="file-input" style="display:none;" accept=".png,.jpg,.jpeg,.tif,.tiff" multiple>
+          </div>
+          <!-- Status row below dropzone -->
+          <div class="upload-status-row">
+            <span id="upload-status-dot" style="display:none; width:7px; height:7px; border-radius:50%; background:#00FFA3; flex-shrink:0;"></span>
+            <span id="upload-status-msg" style="color:#64748B; font-family:var(--font-mono); font-size:10px;">Ready for upload</span>
+            <span id="upload-filename" style="color:#94A3B8; font-family:var(--font-mono); font-size:10px; margin-left:auto; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
           </div>
         </div>
 
-        <!-- 2. ACTIVE SCENE TELEMETRY CARD -->
+        <!-- ② ACTIVE 3D SCENE CARD (Anchor + Reset) -->
         <div>
           <div class="section-title">Active 3D Scene</div>
-          <div id="active-scene-card" class="preset-card active" style="cursor: default;">
+          <div id="active-scene-card" class="preset-card active" style="cursor:default;">
             <div class="preset-icon" id="active-scene-icon">🏙️</div>
             <div class="preset-info">
               <div class="preset-name" id="active-scene-name">Urban Core (Tile DC_03_26)</div>
-              <div class="preset-sub" id="active-scene-sub">1024×1024 · 45.0m – 87.6m (AGL: 42.6m)</div>
+              <div class="preset-sub" id="active-scene-sub">45.0m – 87.6m · AGL: 42.6m</div>
             </div>
           </div>
-          <div style="margin-top: 6px; text-align: right;">
-            <button id="btn-reset-default-scene" class="btn-secondary" style="font-size: 10px; padding: 4px 8px;">
-              ↺ Reset to Default Tile
-            </button>
+          <button id="btn-reset-default-scene" class="btn-secondary" style="width:100%; margin-top:6px; font-size:11px;">
+            ↺ Reset to GAMUS DC_03_26
+          </button>
+        </div>
+
+        <!-- ③ SCENE TELEMETRY -->
+        <div>
+          <div class="section-title">Scene Telemetry</div>
+          <div id="scene-stats-panel" class="stats-panel">
+            <div style="color:#64748B; padding:8px 0; text-align:center; font-size:11px;">Loading...</div>
           </div>
         </div>
 
-        <!-- 3. SURFACE SHADERS -->
+        <!-- ④ SURFACE SHADER -->
         <div>
           <div class="section-title">Surface Shader</div>
           <div class="layer-controls">
@@ -97,21 +105,22 @@
           </div>
         </div>
 
-        <!-- 4. AUTONOMOUS DRONE FLIGHT -->
+        <!-- ⑤ DRONE FLIGHT -->
         <div>
           <div class="section-title">Autonomous Drone</div>
-          <button id="btn-drone-flight" class="btn-primary" style="width: 100%;">
+          <button id="btn-drone-flight" class="btn-primary" style="width:100%;">
             <span>▶</span> CINEMATIC FLIGHT
           </button>
         </div>
 
-        <!-- 5. 2D TRANSECT PROFILE -->
+        <!-- ⑥ ANALYSIS TOOLS -->
         <div>
           <div class="section-title">Analysis Tools</div>
-          <button id="btn-sample-transect" class="btn-secondary" style="width: 100%;">
+          <button id="btn-sample-transect" class="btn-secondary" style="width:100%;">
             📈 2D Cross-Section Transect
           </button>
         </div>
+
       </aside>
 
       <!-- CENTER 3D VIEWPORT -->
@@ -130,13 +139,14 @@
           <span class="hint-key">Space</span> Up
           <span class="hint-key">Ctrl</span> Down
           <span class="hint-key">Q / E</span> Pitch
-          <span style="margin-left:12px;opacity:0.5;">Click ⏸ to exit</span>
+          <span style="margin-left:12px; opacity:0.5;">Click ⏸ to exit</span>
         </div>
 
+        <!-- POINT INSPECTION BADGE -->
         <div id="inspector-badge" class="inspector-badge"></div>
       </main>
 
-      <!-- SLIDE-UP 2D TRANSECT PROFILE DRAWER -->
+      <!-- SLIDE-UP 2D TRANSECT DRAWER -->
       <div id="transectDrawer" class="transect-drawer">
         <div class="drawer-header">
           <div class="drawer-title" id="drawer-title-text">
@@ -146,7 +156,7 @@
             <div class="drawer-stat">Length: <span id="drawer-stat-dist">0 m</span></div>
             <div class="drawer-stat">Min: <span id="drawer-stat-min">0 m</span></div>
             <div class="drawer-stat">Max: <span id="drawer-stat-max">0 m</span></div>
-            <div class="drawer-stat" style="color: #00FFA3">Max AGL: <span id="drawer-stat-agl" style="color: #00FFA3">0 m</span></div>
+            <div class="drawer-stat" style="color:#00FFA3">Max AGL: <span id="drawer-stat-agl" style="color:#00FFA3">0 m</span></div>
             <button id="btn-close-drawer" class="drawer-close">&times;</button>
           </div>
         </div>
@@ -154,9 +164,10 @@
           <canvas id="profileChartCanvas"></canvas>
         </div>
       </div>
-    </div>
 
-    <!-- BENCHMARKS SCORECARD MODAL -->
+    </div><!-- .viewport-body -->
+
+    <!-- BENCHMARKS MODAL -->
     <div id="benchmarkModal" class="modal-backdrop">
       <div class="modal-content">
         <div class="modal-header">
@@ -178,13 +189,14 @@
             </thead>
             <tbody id="benchmark-tbody"></tbody>
           </table>
-          <div style="margin-top: 14px; font-size: 11px; color: #64748B; font-family: monospace;">
-            * Real ground-truth LiDAR elevation arrays from earthflow/GAMUS dataset.
+          <div style="margin-top:14px; font-size:11px; color:#64748B; font-family:monospace;">
+            * Ground-truth LiDAR elevation arrays from earthflow/GAMUS dataset (Tile DC_03_26).
           </div>
         </div>
       </div>
     </div>
-  </div>
+
+  </div><!-- #app-container -->
 
   <script type="module" src="/src/main.js"></script>
 </body>
