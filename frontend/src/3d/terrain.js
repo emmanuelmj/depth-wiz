@@ -53,10 +53,16 @@ export function updateTerrainScene(sceneData) {
   displacementTexture.colorSpace = THREE.NoColorSpace;
   displacementTexture.wrapS = THREE.ClampToEdgeWrapping;
   displacementTexture.wrapT = THREE.ClampToEdgeWrapping;
+  displacementTexture.minFilter = THREE.LinearFilter;
+  displacementTexture.magFilter = THREE.LinearFilter;
+  displacementTexture.generateMipmaps = false;
 
-  // Calculate dynamic vertical exaggeration scale
+  // Realistic vertical exaggeration:
+  // On a 100-unit plane representing a ~1.2km tile, real physical elevation is (range_m / 1200m) * 100
+  // Apply a natural 1.8x - 2.2x vertical exaggeration so mountains & buildings look crisp without extreme needle spikes
   const range = (sceneData.elevation_stats?.max_m || 100) - (sceneData.elevation_stats?.min_m || 0);
-  const scale = THREE.MathUtils.clamp(600 / Math.max(10, range), 4, 25);
+  const naturalScale = (range / 1200.0) * 100.0 * 2.0;
+  const scale = THREE.MathUtils.clamp(naturalScale, 3.0, 9.5);
 
   const mat = terrainMesh.material;
   mat.displacementMap = displacementTexture;

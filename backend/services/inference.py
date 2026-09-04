@@ -231,19 +231,27 @@ def _predict_torch_model(rgb_arr: np.ndarray, device: str = "cuda") -> np.ndarra
 def _predict_cpu_feature_engine(rgb_arr: np.ndarray) -> np.ndarray:
     """
     Ultra-fast CPU structural elevation extractor (NumPy + Pillow).
-    Produces clean 3D terrain displacement in < 200ms with zero GPU/Torch dependencies.
+    Produces cohesive natural terrain slopes and solid building plateaus
+    without noisy single-pixel needle spikes.
     """
     pil_im = Image.fromarray(rgb_arr).convert("L")
-    base_gray = np.array(pil_im, dtype=np.float32) / 255.0
 
-    # Multi-frequency smoothing for natural macro-terrain slope
-    im_blurred = pil_im.filter(ImageFilter.GaussianBlur(radius=16))
-    macro_elev = np.array(im_blurred, dtype=np.float32) / 255.0
+    # 1. Macro undulating topography (gentle regional hills & drainage valleys)
+    im_macro = pil_im.filter(ImageFilter.GaussianBlur(radius=20))
+    macro_elev = np.array(im_macro, dtype=np.float32) / 255.0
 
-    # Sharp structural features (buildings, ridges, canopy)
-    im_edges = pil_im.filter(ImageFilter.FIND_EDGES)
-    edges = np.array(im_edges, dtype=np.float32) / 255.0
+    # 2. Structural plateaus (rooftops, city blocks, ridges) - median filter removes high-frequency gravel/noise
+    im_struct = pil_im.filter(ImageFilter.MedianFilter(size=7))
+    im_struct = im_struct.filter(ImageFilter.GaussianBlur(radius=3))
+    struct_elev = np.array(im_struct, dtype=np.float32) / 255.0
 
-    # Composite relative disparity
-    d_rel = macro_elev * 0.6 + base_gray * 0.25 + edges * 0.15
-    return d_rel.astype(np.float32)
+    # 3. Balanced composite: 60% smooth terrain contours + 40% clean structural plateau
+    d_rel = macro_elev * 0.55 + struct_elev * 0.45
+
+    # 4. Anti-spiking low-pass filter to guarantee smooth vertex displacement
+    d_clipped = np.clip(d_rel, 0.0, 1.0)
+    im_final = Image.fromarray((d_clipped * 255.0).astype(np.uint8)).filter(ImageFilter.GaussianBlur(radius=1.8))
+    d_clean = np.array(im_final, dtype=np.float32) / 255.0
+
+    return d_clean.astype(np.float32)
+

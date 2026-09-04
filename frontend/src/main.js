@@ -94,7 +94,11 @@ async function loadScene(sceneData) {
   const iconEl = document.getElementById('active-scene-icon');
 
   if (nameEl) nameEl.innerText = sceneData.name;
-  if (subEl) subEl.innerText = `${sceneData.min_elevation_m}m – ${sceneData.max_elevation_m}m · AGL: ${sceneData.elevation_stats?.max_building_agl_m}m`;
+  const minElev = sceneData.elevation_stats?.min_m ?? sceneData.min_elevation_m ?? 0;
+  const maxElev = sceneData.elevation_stats?.max_m ?? sceneData.max_elevation_m ?? 100;
+  const aglVal = sceneData.elevation_stats?.max_building_agl_m ?? 35;
+  if (subEl) subEl.innerText = `${minElev}m – ${maxElev}m · AGL: ${aglVal}m`;
+
   if (iconEl) {
     const isMountain = sceneData.landscape_type === 'mountain' || sceneData.name.toLowerCase().includes('mount');
     iconEl.innerText = isMountain ? '⛰️' : '🏙️';

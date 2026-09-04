@@ -304,6 +304,7 @@ def generate_transect(scene_id: str, body: TransectRequest):
 
         profile.append({
             "distance_m": cur_dist,
+            "dist_m": cur_dist,
             "elevation_m": cur_elev
         })
 

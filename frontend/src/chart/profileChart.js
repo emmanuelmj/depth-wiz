@@ -13,7 +13,7 @@ export function renderElevationProfile(transectData) {
   }
 
   const profile = transectData.profile || [];
-  const labels = profile.map(p => `${Math.round(p.dist_m)}m`);
+  const labels = profile.map(p => `${Math.round(p.distance_m ?? p.dist_m ?? 0)}m`);
   const dataPoints = profile.map(p => p.elevation_m);
 
   // Update header stats
