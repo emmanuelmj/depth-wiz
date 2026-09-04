@@ -120,7 +120,7 @@ def run_depth_inference(image_path: Path, output_dir: Path, strategy: Optional[s
 
     if chosen_mode == "cuda" and has_cuda:
         try:
-            d_rel = _predict_cuda_torch(rgb_arr)
+            d_rel = _predict_torch_model(rgb_arr, device="cuda")
             engine_used = "cuda (RTX 3050)"
         except Exception as e:
             print(f"CUDA execution error ({e}). Falling back to CPU.")
@@ -179,40 +179,53 @@ def run_depth_inference(image_path: Path, output_dir: Path, strategy: Optional[s
     }
 
 
-def _predict_cuda_torch(rgb_arr: np.ndarray) -> np.ndarray:
-    """Runs PyTorch Depth-Anything-V2 on CUDA."""
+def _predict_torch_model(rgb_arr: np.ndarray, device: str = "cuda") -> np.ndarray:
+    """Runs PyTorch Depth-Anything-V2 on CUDA or CPU."""
     import torch
-    import torchvision.transforms as T
+    from PIL import Image
 
-    # Checkpoint search
+    # Checkpoint search paths
     ckpt_paths = [
         Path("checkpoints/depth_anything_v2_finetuned_dpt.pth"),
+        Path("checkpoints/depth_anything_v2_gamus_finetuned.pth"),
         Path("checkpoints/depth_anything_v2_vits.pth"),
         Path("data/depth_anything_v2_finetuned_dpt.pth")
     ]
     ckpt_path = next((p for p in ckpt_paths if p.exists()), None)
 
-    # Downsample for ultra-fast 120ms inference, then upscale
-    orig_h, orig_w = rgb_arr.shape[:2]
-    img = Image.fromarray(rgb_arr).resize((518, 518), Image.BICUBIC)
-    inp = T.ToTensor()(img).unsqueeze(0).cuda().half()
+    if not ckpt_path:
+        raise FileNotFoundError("No .pth checkpoint found in checkpoints/")
 
-    with torch.no_grad():
-        if ckpt_path:
-            model = torch.load(ckpt_path, map_location="cuda")
-            model.eval()
+    print(f"[INFERENCE] Loading PyTorch weights from: {ckpt_path} onto {device}...")
+    checkpoint = torch.load(ckpt_path, map_location=device)
+
+    # 1. Try loading via official DepthAnythingV2 architecture
+    try:
+        from depth_anything_v2.dpt import DepthAnythingV2
+        model = DepthAnythingV2(encoder='vits', features=64, out_channels=[48, 96, 192, 384])
+        state_dict = checkpoint.get("state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+        model.load_state_dict(state_dict)
+        model.to(device).eval()
+        with torch.no_grad():
+            depth = model.infer_image(rgb_arr)
+        return depth.astype(np.float32)
+    except Exception as e:
+        print(f"[INFERENCE] DepthAnythingV2 direct class load bypassed ({e}), attempting generic forward...")
+
+    # 2. If checkpoint is already an instantiated torch.nn.Module
+    if isinstance(checkpoint, torch.nn.Module):
+        model = checkpoint.to(device).eval()
+        img = Image.fromarray(rgb_arr).resize((518, 518), Image.BICUBIC)
+        inp = torch.from_numpy(np.array(img)).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+        inp = inp.to(device)
+        if device == "cuda":
+            inp = inp.half()
+        with torch.no_grad():
             out = model(inp)
             depth = out.squeeze().cpu().float().numpy()
-        else:
-            gray = 0.299 * inp[:, 0] + 0.587 * inp[:, 1] + 0.114 * inp[:, 2]
-            sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float16, device="cuda").view(1, 1, 3, 3)
-            sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float16, device="cuda").view(1, 1, 3, 3)
-            gx = torch.nn.functional.conv2d(gray.unsqueeze(1), sobel_x, padding=1)
-            gy = torch.nn.functional.conv2d(gray.unsqueeze(1), sobel_y, padding=1)
-            grad = torch.sqrt(gx ** 2 + gy ** 2).squeeze()
-            depth = (gray.squeeze() * 0.7 + grad * 0.3).cpu().float().numpy()
+        return depth.astype(np.float32)
 
-    return depth
+    raise RuntimeError(f"Loaded checkpoint at {ckpt_path} is a state_dict; depth_anything_v2 module required for inference.")
 
 
 def _predict_cpu_feature_engine(rgb_arr: np.ndarray) -> np.ndarray:
