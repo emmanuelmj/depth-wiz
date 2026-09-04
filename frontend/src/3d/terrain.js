@@ -4,6 +4,7 @@ let terrainGroup = null;
 let currentMode = 'optical';
 let currentOpticalTex = null;
 let baseScale = 25;
+let currentMultiplier = 1.0;
 
 export function initTerrain(scene) {
   terrainGroup = new THREE.Group();
@@ -23,9 +24,17 @@ export function initTerrain(scene) {
   return terrainGroup;
 }
 
+export function setDisplacementMultiplier(multiplier) {
+  currentMultiplier = Math.max(0.05, multiplier);
+  if (terrainGroup) {
+    terrainGroup.children.forEach(child => {
+      child.scale.y = currentMultiplier;
+    });
+  }
+}
+
 export async function updateTerrainScene(sceneData) {
   if (!terrainGroup || !sceneData.assets) return;
-
   // Clear previous city
   while (terrainGroup.children.length > 0) {
     const child = terrainGroup.children[0];
@@ -146,6 +155,7 @@ function buildArchitecturalCity(optImg, hgtImg) {
   const mesh = new THREE.Mesh(geom, materials);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
+  mesh.scale.y = currentMultiplier; // Apply current relief scale
   
   // Lower it slightly so roads rest exactly on 0
   mesh.position.y = -0.01;

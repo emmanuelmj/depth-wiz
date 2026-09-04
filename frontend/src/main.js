@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { initTerrain, updateTerrainScene, getTerrainMesh } from './3d/terrain.js';
+import { initTerrain, updateTerrainScene, getTerrainMesh, setDisplacementMultiplier } from './3d/terrain.js';
 import { toggleFlight, updateFlightLoop, getIsFlying } from './3d/cameraFlight.js';
 import { pickTerrainPixel } from './3d/picking.js';
 import { setupLayerControls } from './hud/layers.js';
 import { showInspectorBadge } from './hud/inspector.js';
 import { renderElevationProfile, closeTransectDrawer } from './chart/profileChart.js';
-import { inspectPoint, fetchTransect, fetchBenchmarks } from './api.js';
+import { fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks, uploadTile } from './api.js';
 import { DEFAULT_SCENE, createDynamicSceneFromImage } from './mockData.js';
 
 let scene, camera, renderer, controls;
@@ -27,18 +27,18 @@ async function init() {
   scene.background = new THREE.Color('#050811');
 
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-  camera.position.set(0, 70, 75);
+  camera.position.set(0, 58, 62);
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   controls = new OrbitControls(camera, canvas);
-  controls.enableDamping  = true;
-  controls.dampingFactor  = 0.05;
-  controls.maxPolarAngle  = Math.PI / 2.05;
-  controls.minDistance    = 5;
-  controls.maxDistance    = 250;
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.maxPolarAngle = Math.PI / 2.45; // ~73 degrees max tilt, preserves aerial geospatial perspective
+  controls.minDistance = 15;
+  controls.maxDistance = 220;
 
   initTerrain(scene);
   setupLayerControls();
@@ -88,9 +88,16 @@ async function loadScene(sceneData) {
   const icons  = { urban: '🏙️', mountain: '⛰️', sparse: '🌾', forest: '🌲', custom: '🛰️' };
 
   if (nameEl) nameEl.innerText = sceneData.name;
-  if (subEl)  subEl.innerText  =
-    `${sceneData.min_elevation_m}m – ${sceneData.max_elevation_m}m · AGL: ${sceneData.elevation_stats?.max_building_agl_m ?? '—'}m`;
-  if (iconEl) iconEl.innerText = icons[sceneData.landscape_type] || '🛰️';
+
+  const minElev = sceneData.elevation_stats?.min_m ?? sceneData.min_elevation_m ?? 0;
+  const maxElev = sceneData.elevation_stats?.max_m ?? sceneData.max_elevation_m ?? 100;
+  const aglVal = sceneData.elevation_stats?.max_building_agl_m ?? 35;
+  if (subEl) subEl.innerText = `${minElev}m – ${maxElev}m · AGL: ${aglVal}m`;
+
+  if (iconEl) {
+    const isMountain = sceneData.landscape_type === 'mountain' || sceneData.name.toLowerCase().includes('mount');
+    iconEl.innerText = isMountain ? '⛰️' : (icons[sceneData.landscape_type] || '🛰️');
+  }
 
   // ── Scene telemetry stats panel ────────────────────────────────────────────
   const statsPanel = document.getElementById('scene-stats-panel');
@@ -140,11 +147,11 @@ function setupUIEvents() {
     });
   }
 
-  // Camera reset
-  const resetCamBtn = document.getElementById('btn-reset-cam');
-  if (resetCamBtn) {
-    resetCamBtn.addEventListener('click', () => {
-      camera.position.set(0, 70, 75);
+  // Camera Reset
+  const resetBtn = document.getElementById('btn-reset-cam');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      camera.position.set(0, 58, 62);
       controls.target.set(0, 0, 0);
       controls.update();
     });
@@ -160,6 +167,18 @@ function setupUIEvents() {
   }
 
   // 2D cross-section transect
+  // 3D Height Relief Slider
+  const reliefSlider = document.getElementById('relief-slider');
+  const reliefVal = document.getElementById('relief-val');
+  if (reliefSlider) {
+    reliefSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      if (reliefVal) reliefVal.innerText = `${val.toFixed(1)}x`;
+      setDisplacementMultiplier(val);
+    });
+  }
+
+  // Sample 2D Cross-Section Transect Button
   const transectBtn = document.getElementById('btn-sample-transect');
   if (transectBtn) {
     transectBtn.addEventListener('click', async () => {
@@ -262,8 +281,18 @@ async function handleUploadedFiles(files) {
   setDropzoneStatus('loading', `⚙️  Processing ${validFiles.length > 1 ? 'files' : 'file'}…`, name);
 
   try {
-    const dynamicScene = await createDynamicSceneFromImage(validFiles);
-    await loadScene(dynamicScene);
+    let uploadedSceneData;
+    const file = validFiles[0];
+    try {
+      // 1. Send to FastAPI backend inference pipeline
+      uploadedSceneData = await uploadTile(file);
+      console.log("[DepthWizard] Ingested tile from backend:", uploadedSceneData);
+    } catch (apiErr) {
+      console.warn("[DepthWizard] Backend upload error, using local canvas fallback:", apiErr.message);
+      uploadedSceneData = await createDynamicSceneFromImage(validFiles);
+    }
+
+    await loadScene(uploadedSceneData);
 
     camera.position.set(0, 70, 75);
     controls.target.set(0, 0, 0);

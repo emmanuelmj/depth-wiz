@@ -32,11 +32,19 @@ frontend/dist/
 *.npz
 *.las
 *.laz
+*.pth
+*.pt
+*.onnx
+*.bin
+checkpoints/*.pth
 data/optical/
 data/dsm/
 data/cache/
 data/ground_truth/
+data/uploads/*
+!data/uploads/.gitkeep
 !data/sample/DC_03_26_RGB.h5
+gamus_test_tiles/
 
 # OS & IDE
 .DS_Store
