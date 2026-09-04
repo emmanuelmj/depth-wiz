@@ -1,36 +1,48 @@
-# Python & Bytecode
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
-venv/
 env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
 
-# Data & Large Files
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.npm
+*.log
+
+# Databases & Cache
+*.db
+*.sqlite
+*.sqlite3
+
+# Geospatial Raster & Heavy Data
 *.tif
 *.tiff
 *.h5
 *.hdf5
-*.pth
-*.pt
-*.bin
-*.onnx
-*.tar.gz
-*.zip
+*.npy
+*.npz
+*.las
+*.laz
+data/optical/
+data/dsm/
+data/cache/
+data/ground_truth/
+!data/sample/DC_03_26_RGB.h5
 
-# Database
-*.db
-*.sqlite
-depth.db
-
-# Node.js
-node_modules/
-dist/
-.vite/
-
-# Operating System & IDE
+# OS & IDE
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-*.log
+*.swp
+.env
+.env.local

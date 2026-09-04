@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DepthWizard — ISRO PS-26175 Command Center</title>
+  <link rel="stylesheet" href="/src/styles/theme.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
+</head>
+<body>
+  <div id="app-container">
+    <!-- TOP COMMAND BAR -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <span class="isro-badge">ISRO · SAC</span>
+        <h1 class="app-title">DEPTHWIZARD</h1>
+        <span class="app-subtitle">PS-26175 // V1.0</span>
+      </div>
+
+      <!-- TELEMETRY HUD STRIP -->
+      <div class="telemetry-strip">
+        <div class="telemetry-item">
+          <span class="telemetry-label">COORD:</span>
+          <span class="telemetry-value" id="hud-coord">23.0225° N, 72.5714° E</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">ELEV (ASL):</span>
+          <span class="telemetry-value" id="hud-elev">184.2 m</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">AGL:</span>
+          <span class="telemetry-value val-emerald" id="hud-agl">54.6 m</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-label">FPS:</span>
+          <span class="telemetry-value fps-counter" id="hud-fps">60</span>
+        </div>
+      </div>
+
+      <!-- TOP ACTIONS -->
+      <div class="top-actions">
+        <button id="btn-open-benchmarks" class="btn-secondary">
+          📊 Benchmarks
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN VIEWPORT -->
+    <div class="viewport-body">
+      <!-- LEFT SIDEBAR -->
+      <aside class="sidebar-panel">
+        <div>
+          <div class="section-title">Benchmark Presets</div>
+          <div id="presets-container" class="presets-grid">
+            <!-- Populated via presets.js -->
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Surface Shader</div>
+          <div class="layer-controls">
+            <button class="layer-btn active" data-mode="optical">Optical</button>
+            <button class="layer-btn" data-mode="heatmap">Heatmap</button>
+            <button class="layer-btn" data-mode="wireframe">Wireframe</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-title">Autonomous Drone</div>
+          <button id="btn-drone-flight" class="btn-primary" style="width: 100%;">
+            <span>▶</span> CINEMATIC FLIGHT
+          </button>
+        </div>
+
+        <div>
+          <div class="section-title">Analysis Tools</div>
+          <button id="btn-sample-transect" class="btn-secondary" style="width: 100%;">
+            📈 2D Cross-Section Transect
+          </button>
+        </div>
+
+        <div>
+          <div class="section-title">Custom Satellite Tile</div>
+          <div id="upload-dropzone" class="upload-dropzone">
+            <div style="font-size: 20px;">📤</div>
+            <div class="upload-text">Upload .TIF, .PNG, or .H5</div>
+            <div class="upload-sub">Single-view height estimation</div>
+            <input type="file" id="file-input" style="display: none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5">
+          </div>
+        </div>
+      </aside>
+
+      <!-- CENTER 3D VIEWPORT -->
+      <main class="viewport-center">
+        <canvas id="three-canvas"></canvas>
+
+        <!-- VIEWPORT OVERLAY CONTROLS -->
+        <div class="viewport-overlay-controls">
+          <button id="btn-reset-cam" class="hud-btn">🎯 Reset View</button>
+        </div>
+
+        <!-- FLOATING POINT INSPECTION BADGE -->
+        <div id="inspector-badge" class="inspector-badge">
+          <!-- Populated via inspector.js -->
+        </div>
+      </main>
+
+      <!-- SLIDE-UP 2D TRANSECT PROFILE DRAWER -->
+      <div id="transectDrawer" class="transect-drawer">
+        <div class="drawer-header">
+          <div class="drawer-title">
+            <span>📈 2D Elevation Profile Transect</span>
+          </div>
+          <div class="drawer-controls">
+            <div class="drawer-stat">Length: <span id="drawer-stat-dist">0 m</span></div>
+            <div class="drawer-stat">Min: <span id="drawer-stat-min">0 m</span></div>
+            <div class="drawer-stat">Max: <span id="drawer-stat-max">0 m</span></div>
+            <button id="btn-close-drawer" class="drawer-close">&times;</button>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="profileChartCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- BENCHMARKS SCORECARD MODAL -->
+    <div id="benchmarkModal" class="modal-backdrop">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="modal-title">
+            <span>🏆 ISRO Validation Scorecard (50% Evaluation Rubric)</span>
+          </div>
+          <button id="btn-close-modal" class="drawer-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <table class="benchmark-table">
+            <thead>
+              <tr>
+                <th>Landscape Type</th>
+                <th>Dynamic Range</th>
+                <th>RMSE (m)</th>
+                <th>MAE (m)</th>
+                <th>Pearson r</th>
+              </tr>
+            </thead>
+            <tbody id="benchmark-tbody">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+          <div style="margin-top: 14px; font-size: 11px; color: #64748B; font-family: monospace;">
+            * Evaluated against Copernicus DEM GLO-30 / SRTM 30m ground-truth rasters.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

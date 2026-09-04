@@ -1,0 +1,9 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pillow>=11.0.0
+h5py>=3.12.0
+numpy>=2.0.0
+scipy>=1.14.0
+python-multipart>=0.0.20
+# rasterio>=1.4.0  # Optional on Windows: install via gdal wheel if needed
