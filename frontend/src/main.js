@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { initTerrain, updateTerrainScene, getTerrainMesh } from './3d/terrain.js';
+import { initTerrain, updateTerrainScene, getTerrainMesh, setDisplacementMultiplier } from './3d/terrain.js';
 import { toggleFlight, updateFlightLoop, getIsFlying } from './3d/cameraFlight.js';
 import { pickTerrainPixel } from './3d/picking.js';
 import { setupLayerControls } from './hud/layers.js';
@@ -28,7 +28,7 @@ async function init() {
   scene.background = new THREE.Color('#050811');
 
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-  camera.position.set(0, 70, 75);
+  camera.position.set(0, 58, 62);
 
   // 2. WebGL Renderer
   renderer = new THREE.WebGLRenderer({
@@ -43,9 +43,9 @@ async function init() {
   controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.maxPolarAngle = Math.PI / 2.05;
-  controls.minDistance = 5;
-  controls.maxDistance = 250;
+  controls.maxPolarAngle = Math.PI / 2.45; // ~73 degrees max tilt, preserves aerial geospatial perspective
+  controls.minDistance = 15;
+  controls.maxDistance = 220;
 
   // 4. Terrain Mesh
   initTerrain(scene);
@@ -145,9 +145,20 @@ function setupUIEvents() {
   const resetBtn = document.getElementById('btn-reset-cam');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      camera.position.set(0, 70, 75);
+      camera.position.set(0, 58, 62);
       controls.target.set(0, 0, 0);
       controls.update();
+    });
+  }
+
+  // 3D Height Relief Slider
+  const reliefSlider = document.getElementById('relief-slider');
+  const reliefVal = document.getElementById('relief-val');
+  if (reliefSlider) {
+    reliefSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      if (reliefVal) reliefVal.innerText = `${val.toFixed(1)}x`;
+      setDisplacementMultiplier(val);
     });
   }
 

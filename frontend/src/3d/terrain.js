@@ -36,6 +36,16 @@ export function initTerrain(scene) {
   return terrainMesh;
 }
 
+let baseScale = 2.4;
+let currentMultiplier = 1.0;
+
+export function setDisplacementMultiplier(multiplier) {
+  currentMultiplier = Math.max(0.05, multiplier);
+  if (terrainMesh && terrainMesh.material) {
+    terrainMesh.material.displacementScale = baseScale * currentMultiplier;
+  }
+}
+
 export function updateTerrainScene(sceneData) {
   if (!terrainMesh || !sceneData.assets) return;
 
@@ -57,16 +67,15 @@ export function updateTerrainScene(sceneData) {
   displacementTexture.magFilter = THREE.LinearFilter;
   displacementTexture.generateMipmaps = false;
 
-  // Realistic vertical exaggeration:
+  // Realistic natural vertical scale:
   // On a 100-unit plane representing a ~1.2km tile, real physical elevation is (range_m / 1200m) * 100
-  // Apply a natural 1.8x - 2.2x vertical exaggeration so mountains & buildings look crisp without extreme needle spikes
+  // Standard 1:1 geospatial height keeps buildings crisp and prevents melted cliff side-extrusion
   const range = (sceneData.elevation_stats?.max_m || 100) - (sceneData.elevation_stats?.min_m || 0);
-  const naturalScale = (range / 1200.0) * 100.0 * 2.0;
-  const scale = THREE.MathUtils.clamp(naturalScale, 3.0, 9.5);
+  baseScale = THREE.MathUtils.clamp((range / 1200.0) * 100.0 * 0.85, 1.6, 4.2);
 
   const mat = terrainMesh.material;
   mat.displacementMap = displacementTexture;
-  mat.displacementScale = scale;
+  mat.displacementScale = baseScale * currentMultiplier;
 
   if (currentMode === 'optical') {
     mat.map = colorTexture;
