@@ -31,6 +31,56 @@ const keys = {
 
 let onStateChangeCallback = null;
 
+let roadMaskGrid = null;
+let gridResolution = 64;
+let planeSize = 100;
+
+export function setRoadMask(maskArray, resolution = 64, size = 100) {
+  roadMaskGrid = maskArray;
+  gridResolution = resolution;
+  planeSize = size;
+}
+
+export function isRoadWalkable(worldX, worldZ) {
+  if (!roadMaskGrid) return true;
+
+  const halfSize = planeSize / 2;
+  const gx = Math.floor(((worldX + halfSize) / planeSize) * gridResolution);
+  const gz = Math.floor(((worldZ + halfSize) / planeSize) * gridResolution);
+
+  if (gx < 0 || gx >= gridResolution || gz < 0 || gz >= gridResolution) {
+    return false; // Boundary limit
+  }
+
+  const idx = gz * gridResolution + gx;
+  return roadMaskGrid[idx] === 1; // 1 = road/walkable, 0 = building
+}
+
+export function findInitialRoadPosition() {
+  if (!roadMaskGrid) return new THREE.Vector3(0, streetElevation, 0);
+
+  const halfSize = planeSize / 2;
+  const centerG = Math.floor(gridResolution / 2);
+
+  for (let radius = 0; radius < gridResolution / 2; radius++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        const gx = centerG + dx;
+        const gz = centerG + dz;
+        if (gx >= 0 && gx < gridResolution && gz >= 0 && gz < gridResolution) {
+          if (roadMaskGrid[gz * gridResolution + gx] === 1) {
+            const wx = (gx / gridResolution) * planeSize - halfSize;
+            const wz = (gz / gridResolution) * planeSize - halfSize;
+            return new THREE.Vector3(wx, streetElevation, wz);
+          }
+        }
+      }
+    }
+  }
+
+  return new THREE.Vector3(0, streetElevation, 0);
+}
+
 export function initStreetNavigator(camera, controls, canvas, onStateChange) {
   cameraRef = camera;
   controlsRef = controls;
@@ -168,7 +218,8 @@ export function enableStreetMode() {
   }
 
   // Spawn on a main central street avenue
-  cameraRef.position.set(0, streetElevation, 15);
+  const spawnPos = findInitialRoadPosition();
+  cameraRef.position.set(spawnPos.x, streetElevation, spawnPos.z);
 
   // Look forward north down the street corridor
   yaw = 0;
@@ -279,12 +330,25 @@ export function updateStreetNavigator(delta) {
 
   speed = Math.hypot(velocity.x, velocity.z);
 
-  // Move camera within the 100x100 tile boundaries
-  const nextX = THREE.MathUtils.clamp(cameraRef.position.x + velocity.x * dt, -48, 48);
-  const nextZ = THREE.MathUtils.clamp(cameraRef.position.z + velocity.z * dt, -48, 48);
+  // Proposed new position
+  const nextX = cameraRef.position.x + velocity.x * dt;
+  const nextZ = cameraRef.position.z + velocity.z * dt;
 
-  cameraRef.position.x = nextX;
-  cameraRef.position.z = nextZ;
+  // Collision handling: check X movement
+  if (isRoadWalkable(nextX, cameraRef.position.z)) {
+    cameraRef.position.x = nextX;
+  } else {
+    velocity.x = 0; // stop against wall
+  }
+
+  // Check Z movement
+  if (isRoadWalkable(cameraRef.position.x, nextZ)) {
+    cameraRef.position.z = nextZ;
+  } else {
+    velocity.z = 0; // stop against wall
+  }
+
+  // Clamp camera height strictly to road eye level
   cameraRef.position.y = streetElevation;
 
   // Apply FPS camera look target based on yaw and pitch
