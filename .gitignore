@@ -44,6 +44,7 @@ data/ground_truth/
 data/uploads/*
 !data/uploads/.gitkeep
 !data/sample/DC_03_26_RGB.h5
+gamus_test_tiles/
 
 # OS & IDE
 .DS_Store
