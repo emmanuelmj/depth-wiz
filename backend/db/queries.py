@@ -17,7 +17,19 @@ def get_all_scenes() -> List[Dict[str, Any]]:
 
 def get_scene_by_id(scene_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
+    # 1. Exact match
     row = conn.execute("SELECT * FROM scenes WHERE id = ?", (scene_id,)).fetchone()
+    # 2. Tolerant prefix match (e.g. if user enters 'afe5420d' instead of 'upload-afe5420d')
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM scenes WHERE id = ? OR id = ?",
+            (f"upload-{scene_id}", scene_id.replace("upload-", ""))
+        ).fetchone()
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM scenes WHERE id LIKE ?",
+            (f"%{scene_id}%",)
+        ).fetchone()
     conn.close()
     return dict(row) if row else None
 
