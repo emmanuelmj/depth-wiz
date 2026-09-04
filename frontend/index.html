@@ -105,19 +105,12 @@
           </div>
         </div>
 
-        <!-- 3B. ELEVATION RELIEF EXAGGERATION -->
+        <!-- 3B. 3D NAVIGATION MODE -->
         <div>
-          <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>3D Height Relief</span>
-            <span id="relief-val" style="color: #00F2FE; font-family: monospace; font-size: 11px;">1.0x</span>
-          </div>
-          <div style="background: rgba(0, 0, 0, 0.25); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.08);">
-            <input type="range" id="relief-slider" min="0.1" max="2.5" step="0.1" value="1.0" style="width: 100%; accent-color: #00F2FE; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; font-size: 9px; color: #64748B; font-family: monospace; margin-top: 3px;">
-              <span>Subtle (0.1x)</span>
-              <span>1:1 Real (1.0x)</span>
-              <span>High (2.5x)</span>
-            </div>
+          <div class="section-title">Navigation Mode</div>
+          <div class="layer-controls">
+            <button id="btn-mode-orbit" class="layer-btn active" title="Aerial overview for LiDAR and transects">🛰️ Orbit</button>
+            <button id="btn-mode-street" class="layer-btn" title="First-person WASD street navigation">🚗 Street</button>
           </div>
         </div>
 

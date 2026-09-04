@@ -3,30 +3,34 @@ import * as THREE from 'three';
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-export function pickTerrainPixel(event, camera, terrainMesh, canvas) {
-  if (!terrainMesh || !camera || !canvas) return null;
+export function pickTerrainPixel(event, camera, targets, canvas) {
+  if (!targets || !camera || !canvas) return null;
 
   const rect = canvas.getBoundingClientRect();
   mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(terrainMesh, true);
+  const targetList = Array.isArray(targets) ? targets.filter(Boolean) : [targets];
+  const intersects = raycaster.intersectObjects(targetList, false);
 
   if (intersects.length > 0) {
-    const pt = intersects[0].point;
-    // Map world coordinates (-50 to 50) to UV (0 to 1)
-    const u = THREE.MathUtils.clamp((pt.x + 50) / 100, 0, 1);
-    const v = THREE.MathUtils.clamp((pt.z + 50) / 100, 0, 1); // Z is inverted relative to standard Y up
+    const hit = intersects[0];
+    let px, py;
 
-    // Assuming 1024x1024 base image for inspection coordinates
-    const pixel_x = Math.floor(u * 1023);
-    const pixel_y = Math.floor(v * 1023);
+    if (hit.uv) {
+      px = Math.floor(THREE.MathUtils.clamp(hit.uv.x * 1024, 0, 1023));
+      py = Math.floor(THREE.MathUtils.clamp((1.0 - hit.uv.y) * 1024, 0, 1023));
+    } else {
+      // Direct world coordinate projection for 100x100 plane [-50, 50]
+      px = Math.floor(THREE.MathUtils.clamp(((hit.point.x + 50) / 100.0) * 1024, 0, 1023));
+      py = Math.floor(THREE.MathUtils.clamp(((hit.point.z + 50) / 100.0) * 1024, 0, 1023));
+    }
 
     return {
-      point: pt,
-      uv: { u, v },
-      pixel: { x: pixel_x, y: pixel_y }
+      point: hit.point,
+      uv: hit.uv || { u: (hit.point.x + 50) / 100, v: (hit.point.z + 50) / 100 },
+      pixel: { x: px, y: py }
     };
   }
 
