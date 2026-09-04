@@ -2,6 +2,20 @@ import { MOCK_SCENES, MOCK_BENCHMARKS } from './mockData.js';
 
 const API_BASE = ''; // Uses Vite proxy or relative path
 
+export async function uploadTile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Upload failed (HTTP ${res.status}): ${errorText}`);
+  }
+  return await res.json();
+}
+
 export async function fetchScenes() {
   try {
     const res = await fetch(`${API_BASE}/api/scenes`);

@@ -7,7 +7,7 @@ import { pickTerrainPixel } from './3d/picking.js';
 import { setupLayerControls } from './hud/layers.js';
 import { showInspectorBadge } from './hud/inspector.js';
 import { renderElevationProfile, closeTransectDrawer } from './chart/profileChart.js';
-import { fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks } from './api.js';
+import { fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks, uploadTile } from './api.js';
 import { DEFAULT_SCENE, createDynamicSceneFromImage } from './mockData.js';
 
 let scene, camera, renderer, controls;
@@ -253,8 +253,17 @@ async function handleUploadedFile(file) {
   }
 
   try {
-    const dynamicScene = await createDynamicSceneFromImage(file);
-    await loadScene(dynamicScene);
+    let uploadedSceneData;
+    try {
+      // 1. Send to FastAPI backend inference pipeline
+      uploadedSceneData = await uploadTile(file);
+      console.log("[DepthWizard] Ingested tile from backend:", uploadedSceneData);
+    } catch (apiErr) {
+      console.warn("[DepthWizard] Backend upload error, using local canvas fallback:", apiErr.message);
+      uploadedSceneData = await createDynamicSceneFromImage(file);
+    }
+
+    await loadScene(uploadedSceneData);
 
     // Reset camera target
     camera.position.set(0, 70, 75);
