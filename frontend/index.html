@@ -25,11 +25,11 @@
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">ELEV (ASL):</span>
-          <span class="telemetry-value" id="hud-elev">184.2 m</span>
+          <span class="telemetry-value" id="hud-elev">87.6 m</span>
         </div>
         <div class="telemetry-item">
-          <span class="telemetry-label">AGL:</span>
-          <span class="telemetry-value val-emerald" id="hud-agl">54.6 m</span>
+          <span class="telemetry-label">AGL (MAX):</span>
+          <span class="telemetry-value val-emerald" id="hud-agl">42.6 m</span>
         </div>
         <div class="telemetry-item">
           <span class="telemetry-label">FPS:</span>
@@ -49,13 +49,39 @@
     <div class="viewport-body">
       <!-- LEFT SIDEBAR -->
       <aside class="sidebar-panel">
+        <!-- 1. SATELLITE IMAGE UPLOAD HUB -->
         <div>
-          <div class="section-title">Benchmark Presets</div>
-          <div id="presets-container" class="presets-grid">
-            <!-- Populated via presets.js -->
+          <div class="section-title">Satellite Image Ingestion</div>
+          <div id="upload-dropzone" class="upload-dropzone">
+            <div style="font-size: 24px;">🛰️ 📤</div>
+            <div class="upload-text" style="font-weight: 600; color: #FFFFFF; margin-top: 6px;">
+              Upload Satellite Imagery
+            </div>
+            <div class="upload-sub" style="margin-top: 4px;">
+              Drag & drop any Mountain, Plain, or City tile (.PNG, .JPG, .TIF)
+            </div>
+            <input type="file" id="file-input" style="display: none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5">
           </div>
         </div>
 
+        <!-- 2. ACTIVE SCENE TELEMETRY CARD -->
+        <div>
+          <div class="section-title">Active 3D Scene</div>
+          <div id="active-scene-card" class="preset-card active" style="cursor: default;">
+            <div class="preset-icon" id="active-scene-icon">🏙️</div>
+            <div class="preset-info">
+              <div class="preset-name" id="active-scene-name">Urban Core (Tile DC_03_26)</div>
+              <div class="preset-sub" id="active-scene-sub">1024×1024 · 45.0m – 87.6m (AGL: 42.6m)</div>
+            </div>
+          </div>
+          <div style="margin-top: 6px; text-align: right;">
+            <button id="btn-reset-default-scene" class="btn-secondary" style="font-size: 10px; padding: 4px 8px;">
+              ↺ Reset to Default Tile
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. SURFACE SHADERS -->
         <div>
           <div class="section-title">Surface Shader</div>
           <div class="layer-controls">
@@ -65,6 +91,7 @@
           </div>
         </div>
 
+        <!-- 4. AUTONOMOUS DRONE FLIGHT -->
         <div>
           <div class="section-title">Autonomous Drone</div>
           <button id="btn-drone-flight" class="btn-primary" style="width: 100%;">
@@ -72,21 +99,12 @@
           </button>
         </div>
 
+        <!-- 5. 2D TRANSECT PROFILE -->
         <div>
           <div class="section-title">Analysis Tools</div>
           <button id="btn-sample-transect" class="btn-secondary" style="width: 100%;">
             📈 2D Cross-Section Transect
           </button>
-        </div>
-
-        <div>
-          <div class="section-title">Custom Satellite Tile</div>
-          <div id="upload-dropzone" class="upload-dropzone">
-            <div style="font-size: 20px;">📤</div>
-            <div class="upload-text">Upload .TIF, .PNG, or .H5</div>
-            <div class="upload-sub">Single-view height estimation</div>
-            <input type="file" id="file-input" style="display: none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5">
-          </div>
         </div>
       </aside>
 
@@ -137,7 +155,7 @@
           <table class="benchmark-table">
             <thead>
               <tr>
-                <th>Landscape Type</th>
+                <th>Landscape Tile</th>
                 <th>Dynamic Range</th>
                 <th>RMSE (m)</th>
                 <th>MAE (m)</th>
@@ -149,7 +167,7 @@
             </tbody>
           </table>
           <div style="margin-top: 14px; font-size: 11px; color: #64748B; font-family: monospace;">
-            * Evaluated against Copernicus DEM GLO-30 / SRTM 30m ground-truth rasters.
+            * Real ground-truth LiDAR elevation arrays from earthflow/GAMUS dataset.
           </div>
         </div>
       </div>

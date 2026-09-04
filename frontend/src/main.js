@@ -4,15 +4,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { initTerrain, updateTerrainScene, getTerrainMesh } from './3d/terrain.js';
 import { toggleFlight, updateFlightLoop, getIsFlying } from './3d/cameraFlight.js';
 import { pickTerrainPixel } from './3d/picking.js';
-import { renderPresets } from './hud/presets.js';
 import { setupLayerControls } from './hud/layers.js';
 import { showInspectorBadge } from './hud/inspector.js';
 import { renderElevationProfile, closeTransectDrawer } from './chart/profileChart.js';
-import { fetchScenes, fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks } from './api.js';
+import { fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks } from './api.js';
+import { DEFAULT_SCENE, createDynamicSceneFromImage } from './mockData.js';
 
 let scene, camera, renderer, controls;
-let currentSceneId = 'urban-ahmedabad-01';
-let availableScenes = [];
+let activeSceneData = DEFAULT_SCENE;
 
 // FPS Counter
 let lastTime = performance.now();
@@ -44,7 +43,7 @@ async function init() {
   controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
-  controls.maxPolarAngle = Math.PI / 2.05; // Prevent camera dipping below earth
+  controls.maxPolarAngle = Math.PI / 2.05;
   controls.minDistance = 5;
   controls.maxDistance = 250;
 
@@ -55,12 +54,8 @@ async function init() {
   setupLayerControls();
   setupUIEvents();
 
-  // 6. Fetch Scenes and load initial preset
-  availableScenes = await fetchScenes();
-  const presetsContainer = document.getElementById('presets-container');
-  renderPresets(presetsContainer, availableScenes, currentSceneId, loadScene);
-
-  await loadScene(currentSceneId);
+  // 6. Load Initial Default Scene (DC_03_26)
+  await loadScene(DEFAULT_SCENE);
 
   // 7. Click raycasting for point inspection
   canvas.addEventListener('click', handleViewportClick);
@@ -72,9 +67,8 @@ async function init() {
   requestAnimationFrame(renderLoop);
 }
 
-async function loadScene(sceneId) {
-  currentSceneId = sceneId;
-  const sceneData = await fetchSceneDetails(sceneId);
+async function loadScene(sceneData) {
+  activeSceneData = sceneData;
   updateTerrainScene(sceneData);
 
   // Update HUD telemetry
@@ -91,8 +85,19 @@ async function loadScene(sceneId) {
     elevEl.innerText = `${sceneData.elevation_stats.max_m} m`;
   }
   if (aglEl && sceneData.elevation_stats) {
-    const aglEst = (sceneData.elevation_stats.max_m - sceneData.elevation_stats.ground_base_m).toFixed(1);
-    aglEl.innerText = `${aglEst} m`;
+    aglEl.innerText = `${sceneData.elevation_stats.max_building_agl_m} m`;
+  }
+
+  // Update active scene card in sidebar
+  const nameEl = document.getElementById('active-scene-name');
+  const subEl = document.getElementById('active-scene-sub');
+  const iconEl = document.getElementById('active-scene-icon');
+
+  if (nameEl) nameEl.innerText = sceneData.name;
+  if (subEl) subEl.innerText = `${sceneData.min_elevation_m}m – ${sceneData.max_elevation_m}m · AGL: ${sceneData.elevation_stats?.max_building_agl_m}m`;
+  if (iconEl) {
+    const isMountain = sceneData.landscape_type === 'mountain' || sceneData.name.toLowerCase().includes('mount');
+    iconEl.innerText = isMountain ? '⛰️' : '🏙️';
   }
 }
 
@@ -102,7 +107,7 @@ async function handleViewportClick(e) {
   const canvas = document.getElementById('three-canvas');
   const hit = pickTerrainPixel(e, camera, getTerrainMesh(), canvas);
   if (hit) {
-    const inspectResult = await inspectPoint(currentSceneId, hit.pixel.x, hit.pixel.y);
+    const inspectResult = await inspectPoint(activeSceneData.id, hit.pixel.x, hit.pixel.y);
     showInspectorBadge(inspectResult);
 
     // Update top telemetry
@@ -147,7 +152,7 @@ function setupUIEvents() {
   if (transectBtn) {
     transectBtn.addEventListener('click', async () => {
       const transectData = await fetchTransect(
-        currentSceneId,
+        activeSceneData.id,
         { x: 120, y: 200 },
         { x: 900, y: 820 },
         120
@@ -160,6 +165,14 @@ function setupUIEvents() {
   const closeDrawerBtn = document.getElementById('btn-close-drawer');
   if (closeDrawerBtn) {
     closeDrawerBtn.addEventListener('click', closeTransectDrawer);
+  }
+
+  // Reset to Default Scene
+  const resetDefaultBtn = document.getElementById('btn-reset-default-scene');
+  if (resetDefaultBtn) {
+    resetDefaultBtn.addEventListener('click', () => {
+      loadScene(DEFAULT_SCENE);
+    });
   }
 
   // Benchmarks Modal
@@ -193,17 +206,81 @@ function setupUIEvents() {
     });
   }
 
-  // Upload Box
+  // 🛰️ DYNAMIC FILE UPLOAD & INGESTION HUB
   const dropzone = document.getElementById('upload-dropzone');
   const fileInput = document.getElementById('file-input');
+
   if (dropzone && fileInput) {
     dropzone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', async (e) => {
-      if (e.target.files.length > 0) {
-        const file = e.target.files[0];
-        alert(`Selected tile "${file.name}". Ready for processing pipeline.`);
+
+    // Drag and drop handlers
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = '#00F2FE';
+      dropzone.style.background = 'rgba(0, 242, 254, 0.08)';
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+      dropzone.style.background = 'transparent';
+    });
+
+    dropzone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+      dropzone.style.background = 'transparent';
+      if (e.dataTransfer.files.length > 0) {
+        await handleUploadedFile(e.dataTransfer.files[0]);
       }
     });
+
+    fileInput.addEventListener('change', async (e) => {
+      if (e.target.files.length > 0) {
+        await handleUploadedFile(e.target.files[0]);
+      }
+    });
+  }
+}
+
+async function handleUploadedFile(file) {
+  const dropzone = document.getElementById('upload-dropzone');
+  if (dropzone) {
+    dropzone.innerHTML = `
+      <div style="font-size: 20px;">⚙️ 🛰️</div>
+      <div class="upload-text" style="color: #00FFA3; font-weight: 600;">Processing ${file.name}...</div>
+      <div class="upload-sub">Generating 3D elevation displacement...</div>
+    `;
+  }
+
+  try {
+    const dynamicScene = await createDynamicSceneFromImage(file);
+    await loadScene(dynamicScene);
+
+    // Reset camera target
+    camera.position.set(0, 70, 75);
+    controls.target.set(0, 0, 0);
+    controls.update();
+
+    if (dropzone) {
+      dropzone.innerHTML = `
+        <div style="font-size: 24px;">🛰️ 📤</div>
+        <div class="upload-text" style="font-weight: 600; color: #FFFFFF; margin-top: 6px;">
+          Upload Another Tile
+        </div>
+        <div class="upload-sub" style="margin-top: 4px;">
+          Loaded ${file.name} successfully!
+        </div>
+        <input type="file" id="file-input" style="display: none;" accept=".png,.jpg,.jpeg,.tif,.tiff,.h5">
+      `;
+      const newFileInput = document.getElementById('file-input');
+      dropzone.onclick = () => newFileInput.click();
+      newFileInput.onchange = (e) => {
+        if (e.target.files.length > 0) handleUploadedFile(e.target.files[0]);
+      };
+    }
+  } catch (err) {
+    console.error("Error processing uploaded image:", err);
+    alert(`Failed to load ${file.name}: ${err.message}`);
   }
 }
 
