@@ -7,3 +7,5 @@ numpy>=2.0.0
 scipy>=1.14.0
 python-multipart>=0.0.20
 # rasterio>=1.4.0  # Optional on Windows: install via gdal wheel if needed
+ultralytics>=8.0.0
+opencv-python-headless>=4.0.0

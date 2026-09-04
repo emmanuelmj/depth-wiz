@@ -374,3 +374,23 @@ def export_scene(scene_id: str):
     if os.path.exists(dsm_path):
         return FileResponse(dsm_path, filename=f"{scene_id}_metric.tif", media_type="image/tiff")
     return {"message": f"Export prepared for {scene_id}", "url": scene["dsm_path"]}
+
+from fastapi import UploadFile, File
+from backend.services.map_analyzer import analyzer
+import shutil
+
+@router.post("/analyze-map")
+async def analyze_map(file: UploadFile = File(...)):
+    # Save uploaded file temporarily
+    temp_path = f"backend/static/{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    try:
+        data = analyzer.analyze_image(temp_path)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # We can leave the file for the frontend to use as texture, or clean it up.
+        pass

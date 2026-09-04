@@ -214,86 +214,114 @@ function buildEstate(x, z) {
 }
 
 // ── Population ────────────────────────────────────────────────────────────────
-function populateCity() {
-  // Houses along pseudo-lines to match texture
-  const lines = [
-    { start: [-20, 42], end: [48, 32], rot: -0.15 }, // Bottom low
-    { start: [-25, 27], end: [48, 17], rot: Math.PI - 0.15 }, // Bottom high
-    { start: [-10, 15], end: [48, 4], rot: -0.2 }, // Mid low
-    { start: [2, 0], end: [48, -9], rot: Math.PI - 0.2 }, // Mid high
-    { start: [20, -13], end: [48, -20], rot: -0.25 } // Top low
-  ];
-  
-  lines.forEach(l => {
-    const dx = l.end[0] - l.start[0];
-    const dz = l.end[1] - l.start[1];
-    const dist = Math.hypot(dx, dz);
-    const steps = Math.floor(dist / 5.5); // Spacing 5.5 wu
-    for(let i=0; i<=steps; i++) {
-      const t = i / steps;
-      const x = l.start[0] + dx * t;
-      const z = l.start[1] + dz * t;
-      
-      // Skip construction sites
-      if ((Math.abs(x - 5) < 3 && Math.abs(z - 12) < 3) || 
-          (Math.abs(x - 15) < 3 && Math.abs(z - 10) < 3) ||
-          (Math.abs(x - 22) < 3 && Math.abs(z - 8) < 3)) {
-        continue;
-      }
-      
-      cityGroup.add(buildHouse(x, z, l.rot, Math.random() > 0.6));
-    }
-  });
-
-  // Curve houses (bottom left)
-  for(let i=0; i<6; i++) {
-    const angle = 0.5 + i * 0.25;
-    const x = -30 + 15 * Math.cos(angle);
-    const z = 25 + 15 * Math.sin(angle);
-    cityGroup.add(buildHouse(x, z, -angle));
+export async function populateCity(imageUrl = "/demo_data/dc-03-26/optical.jpg") {
+  // Clear existing items in cityGroup
+  while(cityGroup.children.length > 0) {
+    cityGroup.remove(cityGroup.children[0]);
   }
 
-  // Estate
-  cityGroup.add(buildEstate(-35, -25));
-  
-  // Construction sites
-  cityGroup.add(buildConstruction(5, 12, 'foundation'));
-  cityGroup.add(buildConstruction(15, 10, 'framed'));
-  cityGroup.add(buildConstruction(22, 8, 'supplies'));
-  
-  // Trees
-  for(let i=0; i<150; i++) {
-    const x = -50 + Math.random()*100;
-    const z = -50 + Math.random()*100;
+  try {
+    console.log("Fetching map data from YOLO backend...");
+    // 1. Fetch the image blob from the frontend URL
+    const imgResponse = await fetch(imageUrl);
+    const blob = await imgResponse.blob();
+
+    // 2. Send to backend /api/analyze-map
+    const formData = new FormData();
+    formData.append("file", blob, "map.jpg");
+
+    const response = await fetch("http://127.0.0.1:8000/api/analyze-map", {
+      method: "POST",
+      body: formData
+    });
     
-    // Forest divider (diagonal)
-    if (z < x - 10 && z > x - 25) {
-      cityGroup.add(buildTree(x, z, 1.5 + Math.random()*1.2, true));
+    if (!response.ok) {
+      throw new Error("Failed to analyze map");
     }
-    // Deep forest (top left)
-    if (x < -20 && z < -30) {
-      cityGroup.add(buildTree(x, z, 2 + Math.random(), true));
-    }
-  }
-  
-  // Street Trees (Sycamore crescent roughly)
-  for(let x=-15; x<=45; x+=6) {
-    cityGroup.add(buildTree(x, 34.5 - (x+15)*0.15, 0.7));
-    cityGroup.add(buildTree(x, 24.5 - (x+15)*0.15, 0.7));
-  }
-  
-  // Cars
-  for(let x=-10; x<40; x+=12) {
-    cityGroup.add(buildCar(x, 30 - (x+10)*0.15, -0.15 + Math.PI/2));
-    cityGroup.add(buildCar(x+4, 20 - (x+14)*0.15, -0.15 - Math.PI/2));
+
+    const data = await response.json();
+    console.log("YOLO/CV Analysis received:", data);
+
+    // 3. Plop houses based on detection
+    data.houses.forEach(h => {
+      cityGroup.add(buildHouse(h.x, h.z, h.r, Math.random() > 0.6));
+    });
+
+    // 4. Plop trees — all come from forest detection now
+    data.trees.forEach(t => {
+      // All detected trees are from forest blobs — smaller scale for dense canopy
+      cityGroup.add(buildTree(t.x, t.z, 0.5 + Math.random() * 0.4, true));
+    });
+
+    // 5. Plop cars (YOLO detections)
+    data.cars.forEach(c => {
+      cityGroup.add(buildCar(c.x, c.z, c.r || 1.57));
+    });
+
+  } catch (error) {
+    console.error("Error analyzing map dynamically. Falling back to hardcoded layout.", error);
+    populateCityFallback();
   }
 }
 
+function populateCityFallback() {
+  // Exact coordinates mapped to the 2D optical map footprints
+  const houses = [
+    {x: -6, z: 15, r: 1.3}, {x: 2, z: 13, r: 1.4}, {x: 10, z: 11, r: 1.57},
+    {x: 18, z: 10, r: 1.57}, {x: 26, z: 9.5, r: 1.57}, {x: 34, z: 9, r: 1.57},
+    {x: 42, z: 8.5, r: 1.57}, {x: 50, z: 8, r: 1.57},
+    {x: -6, z: 27, r: 1.3}, {x: 2, z: 25, r: 1.4}, {x: 10, z: 24, r: 1.57},
+    {x: 18, z: 23, r: 1.57}, {x: 26, z: 22, r: 1.57}, {x: 34, z: 21, r: 1.57},
+    {x: 42, z: 20, r: 1.57}, {x: 50, z: 19, r: 1.57},
+    {x: -12, z: 42, r: 1.3}, {x: -4, z: 40, r: 1.4}, {x: 4, z: 38, r: 1.57},
+    {x: 12, z: 37, r: 1.57}, {x: 20, z: 36, r: 1.57}, {x: 28, z: 35, r: 1.57},
+    {x: 36, z: 34, r: 1.57}, {x: 44, z: 33, r: 1.57},
+    {x: -18, z: 35, r: 1.0}, {x: -25, z: 28, r: 0.7}, 
+    {x: -30, z: 20, r: 0.4}, {x: -32, z: 12, r: 0.1},
+    {x: 30, z: -4, r: 1.57}, {x: 38, z: -4.5, r: 1.57}, {x: 46, z: -5, r: 1.57},
+    {x: -15, z: 0, r: 1.0}, {x: -5, z: -6, r: 1.0}, {x: 5, z: -8, r: 1.57}
+  ];
+
+  houses.forEach(h => {
+    cityGroup.add(buildHouse(h.x, h.z, h.r, Math.random() > 0.6));
+  });
+
+  for(let i=0; i<300; i++) {
+    const x = -50 + Math.random()*60;
+    const z = -50 + Math.random()*60;
+    if (x + z < -35) cityGroup.add(buildTree(x, z, 1.8 + Math.random() * 1.5, true));
+  }
+  
+  const streetTrees = [{z: -1}, {z: 14}, {z: 18}, {z: 30}];
+  streetTrees.forEach(row => {
+    for(let x=0; x<=45; x+=7) cityGroup.add(buildTree(x, row.z - (x*0.05), 0.7)); 
+  });
+
+  for(let i=0; i<40; i++) {
+    const x = -10 + Math.random()*60;
+    const z = 20 + Math.random()*30;
+    if (x + z > 40) cityGroup.add(buildTree(x, z, 1.0 + Math.random(), false));
+  }
+  
+  const cars = [
+    {x: -40, z: 5, r: 0.8}, {x: -30, z: -5, r: 0.8}, {x: -20, z: -15, r: 0.8}, 
+    {x: -10, z: -25, r: 0.8}, {x: 0, z: -35, r: 0.8},
+    {x: 5, z: 5, r: 1.57}, {x: 18, z: 4.5, r: 1.57}, {x: 32, z: 4, r: 1.57},
+    {x: -2, z: 7, r: -1.57}, {x: 12, z: 6.5, r: -1.57}, {x: 25, z: 6, r: -1.57}, {x: 40, z: 5.5, r: -1.57},
+    {x: 2, z: 22, r: 1.57}, {x: 15, z: 21.5, r: 1.57}, {x: 28, z: 21, r: 1.57}, {x: 45, z: 20, r: 1.57},
+    {x: 8, z: 24, r: -1.57}, {x: 22, z: 23.5, r: -1.57}, {x: 35, z: 23, r: -1.57},
+    {x: -12, z: 32, r: 0.8}, {x: -18, z: 25, r: 0.5}, {x: -22, z: 15, r: 0.2}
+  ];
+  cars.forEach(c => {
+    cityGroup.add(buildCar(c.x, c.z, c.r));
+  });
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
-export function buildCity(scene, parentMesh) {
+export function buildCity(scene, parentMesh, optUrl) {
   clearCity(scene, parentMesh);
   
-  populateCity();
+  populateCity(optUrl);
   parentMesh.add(cityGroup);
   
   // Golden hour lighting

@@ -372,9 +372,11 @@ async function handleUploadedFiles(files) {
     const file = validFiles[0];
     try {
       uploadedSceneData = await uploadTile(file);
+      uploadedSceneData.city_builder_mode = true; // Force 3D City Builder Mode
     } catch (apiErr) {
       console.warn("[DepthWizard] Backend upload error, using local canvas fallback:", apiErr.message);
       uploadedSceneData = await createDynamicSceneFromImage(validFiles);
+      uploadedSceneData.city_builder_mode = true; // Force 3D City Builder Mode
     }
 
     if (getIsStreetMode()) {

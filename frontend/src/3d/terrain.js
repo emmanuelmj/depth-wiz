@@ -76,9 +76,10 @@ export async function updateTerrainScene(sceneData) {
   currentOpticalTex.colorSpace = THREE.SRGBColorSpace;
   currentOpticalTex.anisotropy = 16;
 
-  // ── City-builder mode: floating flat map plane ──────────────────
+  // 🏗️ City-builder mode: floating flat map plane 🏙️
   if (sceneData.city_builder_mode) {
-    buildFloatingMapPlane();
+    const optUrl = sceneData.assets?.optical_texture_url || sceneData.thumbnail_url || "/demo_data/dc-03-26/optical.jpg";
+    buildFloatingMapPlane(optUrl);
     return;
   }
 
@@ -93,40 +94,24 @@ export async function updateTerrainScene(sceneData) {
   buildArchitecturalCity(optImg, hgtImg);
 }
 
-// ─── FLOATING MAP PLANE (city_builder_mode) ───────────────────────────────────
-function buildFloatingMapPlane() {
+// ─── FLOATING MAP PLANE (city_builder_mode) ──────────────────────────────────
+function buildFloatingMapPlane(optUrl = "/demo_data/dc-03-26/optical.jpg") {
   const W = 100;
   const H = 100;
-
-  // Dark atmospheric scene background for the floating-card look
-  if (sceneRef) {
-    sceneRef.background = new THREE.Color(0x080e1a);
-    sceneRef.fog = new THREE.FogExp2(0x080e1a, 0.008);
-  }
-
-  // ── 1. Main map plane — flat, gently tilted toward the camera ──
+  
   const geom = new THREE.PlaneGeometry(W, H, 1, 1);
-  // Rotate so it lies horizontal then tilt slightly for the "floating card" look
   geom.rotateX(-Math.PI / 2);
-
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = new THREE.MeshBasicMaterial({
     map: currentOpticalTex,
-    roughness: 0.6,
-    metalness: 0.05,
-    side: THREE.FrontSide,
+    color: 0xffffff,
   });
-
   currentMesh = new THREE.Mesh(geom, mat);
-  currentMesh.castShadow    = true;
-  currentMesh.receiveShadow = true;
-  // Float it 2 units above origin — gives shadow space underneath
-  currentMesh.position.set(0, 2, 0);
-  // Gentle forward tilt toward the viewer (≈10°) so it reads as "floating"
-  currentMesh.rotation.x = THREE.MathUtils.degToRad(-10);
-
+  
+  currentMesh.rotation.x = -10 * (Math.PI / 180);
+  currentMesh.position.set(0, 0, -20);
   terrainGroup.add(currentMesh);
 
-  // ── 2. Soft drop-shadow quad (blurred dark ellipse below the plane) ──
+  // Simulated drop shadow 
   const shadowCanvas = document.createElement('canvas');
   shadowCanvas.width = shadowCanvas.height = 512;
   const sCtx = shadowCanvas.getContext('2d');
@@ -150,18 +135,17 @@ function buildFloatingMapPlane() {
   shadowMesh.position.set(0, -0.5, 6);   // slightly below + shifted down in tilt
   terrainGroup.add(shadowMesh);
 
-  // ── 3. Glowing cyan edge frame (4 thin boxes around perimeter) ──
+  // 🟦 Glowing cyan edge frame (4 thin boxes around perimeter) 🟦
   const frameColor = 0x00f2fe;
   const frameThick = 0.28;
   const frameHeight = 0.18;
   const frameMat = new THREE.MeshBasicMaterial({ color: frameColor });
 
   const edges = [
-    // [width, depth, x, z]  — corners of the 100×100 plane in local XZ
-    [W + frameThick, frameThick,  0,           -H / 2],  // top edge
-    [W + frameThick, frameThick,  0,            H / 2],  // bottom edge
-    [frameThick,     H,          -W / 2,        0    ],  // left edge
-    [frameThick,     H,           W / 2,        0    ],  // right edge
+    [W + frameThick, frameThick,  0,           -H / 2],
+    [W + frameThick, frameThick,  0,            H / 2],
+    [frameThick,     H,          -W / 2,        0    ],
+    [frameThick,     H,           W / 2,        0    ],
   ];
 
   edges.forEach(([ew, ed, ex, ez]) => {
@@ -173,7 +157,7 @@ function buildFloatingMapPlane() {
 
   // Build the 3D procedural city on top of the plane
   if (sceneRef && currentMesh) {
-    buildCity(sceneRef, currentMesh);
+    buildCity(sceneRef, currentMesh, optUrl);
   }
 }
 
