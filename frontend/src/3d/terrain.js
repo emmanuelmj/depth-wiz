@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { setRoadMask } from './streetNavigator.js';
+import { isCityBuilderActive } from '../hud/cityBuilderHUD.js';
+import { buildCity, clearCity } from './cityScene.js';
 
 let terrainGroup = null;
 let currentMode = 'optical';
@@ -46,7 +48,12 @@ export function setDisplacementMultiplier(multiplier) {
 export async function updateTerrainScene(sceneData) {
   if (!terrainGroup || !sceneData.assets) return Promise.resolve();
 
-  // Clear previous city mesh
+  // Clear previous mesh + reset atmosphere + clear city objects
+  if (sceneRef) {
+    sceneRef.fog = null;
+    sceneRef.background = new THREE.Color(0x050811);
+    clearCity(sceneRef, null); // Clear lights and groups
+  }
   while (terrainGroup.children.length > 0) {
     const child = terrainGroup.children[0];
     terrainGroup.remove(child);
@@ -63,24 +70,100 @@ export async function updateTerrainScene(sceneData) {
     sceneData.assets.height_map_url
   );
 
-  if (!optImg || !hgtImg) return;
+  if (!optImg) return;
 
   currentOpticalTex = new THREE.CanvasTexture(optImg);
   currentOpticalTex.colorSpace = THREE.SRGBColorSpace;
   currentOpticalTex.anisotropy = 16;
 
+  // 🏗️ City-builder mode: floating flat map plane 🏙️
+  if (sceneData.city_builder_mode) {
+    const optUrl = sceneData.assets?.optical_texture_url || sceneData.thumbnail_url || "/demo_data/dc-03-26/optical.jpg";
+    buildFloatingMapPlane(optUrl);
+    return;
+  }
+
+  if (!hgtImg) return;
+
   const minElev = sceneData.elevation_stats?.min_m ?? 45.0;
   const maxElev = sceneData.elevation_stats?.max_m ?? 87.6;
   const range = Math.max(10, maxElev - minElev);
 
-  // Realistic 1:1 geospatial vertical scale for a ~1.2km tile on 100 units
   baseScale = THREE.MathUtils.clamp((range / 1200.0) * 100.0 * 2.2, 4, 38);
 
   buildArchitecturalCity(optImg, hgtImg);
 }
 
+// ─── FLOATING MAP PLANE (city_builder_mode) ──────────────────────────────────
+function buildFloatingMapPlane(optUrl = "/demo_data/dc-03-26/optical.jpg") {
+  const W = 100;
+  const H = 100;
+  
+  const geom = new THREE.PlaneGeometry(W, H, 1, 1);
+  geom.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshBasicMaterial({
+    map: currentOpticalTex,
+    color: 0xffffff,
+  });
+  currentMesh = new THREE.Mesh(geom, mat);
+  
+  currentMesh.rotation.x = -10 * (Math.PI / 180);
+  currentMesh.position.set(0, 0, -20);
+  terrainGroup.add(currentMesh);
+
+  // Simulated drop shadow 
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = shadowCanvas.height = 512;
+  const sCtx = shadowCanvas.getContext('2d');
+  const radGrad = sCtx.createRadialGradient(256, 256, 10, 256, 256, 256);
+  radGrad.addColorStop(0,   'rgba(0,0,0,0.55)');
+  radGrad.addColorStop(0.5, 'rgba(0,0,0,0.18)');
+  radGrad.addColorStop(1,   'rgba(0,0,0,0)');
+  sCtx.fillStyle = radGrad;
+  sCtx.fillRect(0, 0, 512, 512);
+
+  const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+  const shadowGeom = new THREE.PlaneGeometry(W * 1.18, H * 1.18);
+  shadowGeom.rotateX(-Math.PI / 2);
+  const shadowMat = new THREE.MeshBasicMaterial({
+    map: shadowTex,
+    transparent: true,
+    depthWrite: false,
+    opacity: 1,
+  });
+  const shadowMesh = new THREE.Mesh(shadowGeom, shadowMat);
+  shadowMesh.position.set(0, -0.5, 6);   // slightly below + shifted down in tilt
+  terrainGroup.add(shadowMesh);
+
+  // 🟦 Glowing cyan edge frame (4 thin boxes around perimeter) 🟦
+  const frameColor = 0x00f2fe;
+  const frameThick = 0.28;
+  const frameHeight = 0.18;
+  const frameMat = new THREE.MeshBasicMaterial({ color: frameColor });
+
+  const edges = [
+    [W + frameThick, frameThick,  0,           -H / 2],
+    [W + frameThick, frameThick,  0,            H / 2],
+    [frameThick,     H,          -W / 2,        0    ],
+    [frameThick,     H,           W / 2,        0    ],
+  ];
+
+  edges.forEach(([ew, ed, ex, ez]) => {
+    const eg = new THREE.BoxGeometry(ew, frameHeight, ed);
+    const em = new THREE.Mesh(eg, frameMat);
+    em.position.set(ex, frameHeight / 2, ez);
+    currentMesh.add(em);  // child of map plane — rotates with it
+  });
+
+  // Build the 3D procedural city on top of the plane
+  if (sceneRef && currentMesh) {
+    buildCity(sceneRef, currentMesh, optUrl);
+  }
+}
+
 // ─── SMOOTH DISPLACEMENT WITH SLOPE-BASED MATERIALS ──────────────────────────
 function buildArchitecturalCity(optImg, hgtImg) {
+
   const gridSize = GRID_RES;
 
   const hgtCanvas = document.createElement('canvas');

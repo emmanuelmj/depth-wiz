@@ -17,6 +17,7 @@ import { showInspectorBadge } from './hud/inspector.js';
 import { renderElevationProfile, closeTransectDrawer } from './chart/profileChart.js';
 import { fetchSceneDetails, inspectPoint, fetchTransect, fetchBenchmarks, uploadTile } from './api.js';
 import { DEFAULT_SCENE, createDynamicSceneFromImage } from './mockData.js';
+import { showCityBuilderHUD, hideCityBuilderHUD, isCityBuilderActive } from './hud/cityBuilderHUD.js';
 
 let scene, camera, renderer, controls;
 let activeSceneData = DEFAULT_SCENE;
@@ -48,6 +49,8 @@ async function init() {
   });
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // 3. Orbit Controls (for Aerial Satellite Mode)
   controls = new OrbitControls(camera, canvas);
@@ -102,6 +105,19 @@ async function loadScene(sceneData) {
 
   if (loader) loader.classList.remove('visible');
 
+  // ── City-Builder 2D HUD + Camera positioning ──────────────────────────────
+  if (sceneData.city_builder_mode) {
+    const imgUrl = sceneData.assets?.optical_texture_url || sceneData.thumbnail_url;
+    showCityBuilderHUD(imgUrl);
+
+    // Isometric-ish angle: looking at the floating map card from a low drone POV
+    camera.position.set(0, 55, 75);
+    controls.target.set(0, 2, 0);
+    controls.update();
+  } else {
+    hideCityBuilderHUD();
+  }
+
   // ── HUD telemetry ──────────────────────────────────────────────────────────
   const coordEl = document.getElementById('hud-coord');
   const elevEl  = document.getElementById('hud-elev');
@@ -155,8 +171,8 @@ async function loadScene(sceneData) {
 
 // ─── VIEWPORT CLICK → POINT INSPECTION ───────────────────────────────────────
 async function handleViewportClick(e) {
-  // In street drive mode or drone flight, mouse interaction is for steering/looking
-  if (getIsFlying() || getIsStreetMode()) return;
+  // In street drive mode, drone flight, or 2D city-builder view — ignore
+  if (getIsFlying() || getIsStreetMode() || isCityBuilderActive()) return;
 
   const canvas = document.getElementById('three-canvas');
   const hit = pickTerrainPixel(e, camera, getRaycastTargets(), canvas);
@@ -356,9 +372,11 @@ async function handleUploadedFiles(files) {
     const file = validFiles[0];
     try {
       uploadedSceneData = await uploadTile(file);
+      uploadedSceneData.city_builder_mode = true; // Force 3D City Builder Mode
     } catch (apiErr) {
       console.warn("[DepthWizard] Backend upload error, using local canvas fallback:", apiErr.message);
       uploadedSceneData = await createDynamicSceneFromImage(validFiles);
+      uploadedSceneData.city_builder_mode = true; // Force 3D City Builder Mode
     }
 
     if (getIsStreetMode()) {

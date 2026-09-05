@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DepthWizard — ISRO PS-26175 Command Center</title>
   <link rel="stylesheet" href="/src/styles/theme.css">
+  <link rel="stylesheet" href="/src/styles/cityBuilderHUD.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛰️</text></svg>">
 </head>
 <body>
@@ -135,6 +136,9 @@
       <!-- CENTER 3D VIEWPORT -->
       <main class="viewport-center">
         <canvas id="three-canvas"></canvas>
+
+        <!-- CITY-BUILDER 2D HUD (shown for optical.jpg / optical.png uploads) -->
+        <div id="city-builder-hud"></div>
 
         <div class="viewport-overlay-controls">
           <button id="btn-reset-cam" class="hud-btn">🎯 Reset View</button>
